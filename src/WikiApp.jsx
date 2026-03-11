@@ -419,6 +419,17 @@ export default function WikiApp() {
 
   const online = usePresence(user, currentId, editing)
 
+  // Read initial article ID from URL hash (e.g. #the-wyld)
+  useEffect(() => {
+    const hash = window.location.hash.slice(1)
+    if (hash) setCurrentId(hash)
+  }, [])
+
+  // Keep URL hash in sync with current article
+  useEffect(() => {
+    if (currentId) window.location.hash = currentId
+  }, [currentId])
+
   // Real-time articles subscription
   useEffect(() => {
     const unsub = onSnapshot(collection(db,'articles'), snap => {
@@ -426,7 +437,11 @@ export default function WikiApp() {
       snap.docs.forEach(d => { map[d.id] = { id:d.id, ...d.data() } })
       setArticles(map)
       setArticlesLoaded(true)
-      if (!currentId && snap.docs.length > 0) setCurrentId(snap.docs[0].id)
+      // Only pick a default if nothing is set yet (and hash didn't give us one)
+      setCurrentId(prev => {
+        if (prev) return prev
+        return snap.docs.length > 0 ? snap.docs[0].id : null
+      })
     })
     return unsub
   }, [])
@@ -464,7 +479,9 @@ export default function WikiApp() {
       updatedBy: user.displayName || user.email,
     })
     await logChange('edited', editDraft.title)
-    setEditing(false); setEditDraft(null)
+    setCurrentId(editDraft.id)
+    setEditing(false)
+    setEditDraft(null)
   }
 
   const deleteArticle = async id => {
