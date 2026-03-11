@@ -9,7 +9,7 @@ import { usePresence, uidColor, initials } from './usePresence'
 import { INITIAL_ARTICLES } from './seedData'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const CATEGORIES = ['Lore & History', 'Peoples', 'Locations', 'Factions']
+const DEFAULT_CATEGORIES = ['Lore & History', 'Peoples', 'Locations', 'Factions']
 const CONTENT_FONTS = [
   { label: 'Source Serif (Default)', value: 'Source Serif 4, Georgia, serif' },
   { label: 'IM Fell English', value: 'IM Fell English, Georgia, serif' },
@@ -179,7 +179,7 @@ function InfoboxEditor({ infobox, onChange }) {
 
 // ─── Article View ─────────────────────────────────────────────────────────────
 function ArticleView({ article, onEdit, onDelete, onlineUsers }) {
-  const hasInfo = article.infobox && Object.keys(article.infobox).length > 0
+  const hasInfo = (article.infobox && Object.keys(article.infobox).length > 0) || article.portrait
   // Who else is reading this article?
   const readers = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&!u.editing)
   const editors = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&u.editing)
@@ -204,6 +204,16 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers }) {
       {hasInfo&&(
         <div style={{float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}}>
           <div style={{fontFamily:"'IM Fell English',serif",fontWeight:600,fontSize:'0.88rem',marginBottom:6,borderBottom:'1px solid #ccc9c0',paddingBottom:4,color:'#1b4f72'}}>{article.title}</div>
+          {/* Portrait */}
+          <div style={{textAlign:'center',marginBottom:8}}>
+            {article.portrait
+              ? <img src={article.portrait} alt={article.title} style={{width:'100%',maxHeight:220,objectFit:'cover',borderRadius:3,border:'1px solid #ccc9c0',display:'block'}}/>
+              : <div style={{width:'100%',height:160,background:'#d8d4cc',borderRadius:3,border:'1px solid #ccc9c0',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:4}}>
+                  <span style={{fontSize:'2.8rem',color:'#a09890',lineHeight:1}}>?</span>
+                  <span style={{fontSize:'0.68rem',color:'#a09890',letterSpacing:'0.05em'}}>No portrait</span>
+                </div>
+            }
+          </div>
           {Object.entries(article.infobox).map(([k,v])=>(
             <div key={k} style={{display:'flex',gap:6,marginBottom:4,lineHeight:1.4}}>
               <span style={{color:'#666',minWidth:82,fontSize:'0.72rem',textTransform:'uppercase',letterSpacing:'0.04em',paddingTop:1,flexShrink:0}}>{k}</span>
@@ -268,7 +278,7 @@ function ChangelogPanel({ onClose }) {
 }
 
 // ─── Edit Form ────────────────────────────────────────────────────────────────
-function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew }) {
+function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categories }) {
   const [preview, setPreview] = useState(false)
   const inp = {width:'100%',background:'#f8f7f4',color:'#222',border:'1px solid #ccc9c0',borderRadius:3,padding:'6px 10px',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.9rem',marginBottom:8,boxSizing:'border-box'}
   const lb = {display:'block',fontSize:'0.69rem',color:'#666',marginBottom:3,textTransform:'uppercase',letterSpacing:'0.07em',marginTop:10}
@@ -288,11 +298,23 @@ function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew }) {
         : <>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 1rem'}}>
               <div><label style={lb}>Title</label><input style={inp} value={draft.title} onChange={e=>setDraft(p=>({...p,title:e.target.value}))} placeholder='e.g. The Worldheart'/></div>
-              <div><label style={lb}>Category</label><select style={inp} value={draft.category} onChange={e=>setDraft(p=>({...p,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
+              <div><label style={lb}>Category</label><select style={inp} value={draft.category} onChange={e=>setDraft(p=>({...p,category:e.target.value}))}>{(categories||DEFAULT_CATEGORIES).map(c=><option key={c}>{c}</option>)}</select></div>
             </div>
             <label style={lb}>Subtitle / Tagline</label>
             <input style={inp} value={draft.subtitle||''} onChange={e=>setDraft(p=>({...p,subtitle:e.target.value}))} placeholder='e.g. Mythic Treasure of Dwarvenkind'/>
             <label style={{...lb,marginTop:14}}>Infobox</label>
+            <div style={{marginBottom:8}}>
+              <label style={lb}>Portrait Image URL</label>
+              <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
+                <input style={{...inp,marginBottom:0,flex:1}} value={draft.portrait||''} onChange={e=>setDraft(p=>({...p,portrait:e.target.value}))} placeholder='https://… (leave blank for grey placeholder)'/>
+                <div style={{width:56,height:56,flexShrink:0,borderRadius:3,border:'1px solid #ccc9c0',overflow:'hidden',background:'#d8d4cc',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  {draft.portrait
+                    ? <img src={draft.portrait} alt='' style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                    : <span style={{fontSize:'1.5rem',color:'#a09890'}}>?</span>
+                  }
+                </div>
+              </div>
+            </div>
             <InfoboxEditor infobox={draft.infobox||{}} onChange={ib=>setDraft(p=>({...p,infobox:ib}))}/>
             <label style={{...lb,marginTop:14}}>Article Body</label>
             <RichEditor value={draft.content||''} onChange={html=>setDraft(p=>({...p,content:html}))}/>
@@ -365,6 +387,10 @@ export default function WikiApp() {
   const [newArt, setNewArt] = useState({ title:'',category:'Lore & History',subtitle:'',content:'',infobox:{} })
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [showChangelog, setShowChangelog] = useState(false)
+  const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
+  const [collapsedCats, setCollapsedCats] = useState({})
+  const [newCatInput, setNewCatInput] = useState('')
+  const [showNewCatInput, setShowNewCatInput] = useState(false)
 
   const online = usePresence(user, currentId, editing)
 
@@ -429,10 +455,21 @@ export default function WikiApp() {
     search==='' || a.title.toLowerCase().includes(search.toLowerCase()) ||
     (a.content||'').replace(/<[^>]*>/g,'').toLowerCase().includes(search.toLowerCase())
   )
-  const byCategory = CATEGORIES.reduce((acc,cat) => {
+  // Merge in any categories from articles that aren't in our list yet
+  const allCategories = [...categories]
+  Object.values(articles).forEach(a => { if (a.category && !allCategories.includes(a.category)) allCategories.push(a.category) })
+  const byCategory = allCategories.reduce((acc,cat) => {
     acc[cat] = filtered.filter(a=>a.category===cat); return acc
   }, {})
 
+  const addCategory = () => {
+    const name = newCatInput.trim()
+    if (!name || categories.includes(name)) return
+    setCategories(c => [...c, name])
+    setNewCatInput('')
+    setShowNewCatInput(false)
+  }
+  const toggleCat = cat => setCollapsedCats(p => ({...p, [cat]: !p[cat]}))
   const navTo = id => { setCurrentId(id); setEditing(false); setCreating(false) }
 
   return (
@@ -460,26 +497,58 @@ export default function WikiApp() {
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
         {/* Sidebar */}
         {sidebarOpen&&(
-          <aside style={{width:220,background:'#f0eeea',borderRight:'1px solid #ccc9c0',overflowY:'auto',padding:'0.6rem 0',flexShrink:0}}>
-            {CATEGORIES.map(cat=>(
-              <div key={cat} style={{marginBottom:'0.3rem'}}>
-                <div style={{fontSize:'0.63rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#888',padding:'5px 12px 2px',fontWeight:700}}>{cat}</div>
-                {byCategory[cat].length===0&&<div style={{fontSize:'0.78rem',color:'#aaa',padding:'2px 12px',fontStyle:'italic'}}>—</div>}
-                {byCategory[cat].map(a=>{
-                  const isActive = currentId===a.id&&!creating
-                  const editingUsers = Object.values(online).filter(u=>u.articleId===a.id&&u.editing)
-                  return (
-                    <div key={a.id} onClick={()=>navTo(a.id)}
-                      style={{padding:'3px 12px',cursor:'pointer',fontSize:'0.85rem',lineHeight:1.45,display:'flex',alignItems:'center',gap:4,
-                        background:isActive?'#e2dfd8':'transparent', color:isActive?'#1b4f72':'#222',
-                        fontWeight:isActive?600:400, borderLeft:isActive?'3px solid #1b4f72':'3px solid transparent'}}>
-                      <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</span>
-                      {editingUsers.length>0&&<span title={editingUsers.map(u=>u.displayName).join(', ')+' editing'} style={{width:7,height:7,borderRadius:'50%',background:'#f5a623',flexShrink:0}}/>}
+          <aside style={{width:220,background:'#f0eeea',borderRight:'1px solid #ccc9c0',overflowY:'auto',padding:'0.6rem 0',flexShrink:0,display:'flex',flexDirection:'column'}}>
+            <div style={{flex:1}}>
+              {allCategories.map(cat=>{
+                const collapsed = !!collapsedCats[cat]
+                return (
+                  <div key={cat} style={{marginBottom:'0.2rem'}}>
+                    <div style={{display:'flex',alignItems:'center',padding:'5px 8px 2px 12px',gap:4}}>
+                      <button onClick={()=>toggleCat(cat)} title={collapsed?'Expand':'Collapse'}
+                        style={{background:'none',border:'none',cursor:'pointer',color:'#aaa',fontSize:'0.6rem',padding:'0 2px',lineHeight:1,flexShrink:0}}>
+                        {collapsed?'▶':'▼'}
+                      </button>
+                      <span style={{fontSize:'0.63rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#888',fontWeight:700,flex:1}}>{cat}</span>
                     </div>
-                  )
-                })}
-              </div>
-            ))}
+                    {!collapsed&&(
+                      <>
+                        {byCategory[cat].length===0&&<div style={{fontSize:'0.78rem',color:'#aaa',padding:'2px 12px 2px 22px',fontStyle:'italic'}}>—</div>}
+                        {byCategory[cat].map(a=>{
+                          const isActive = currentId===a.id&&!creating
+                          const editingUsers = Object.values(online).filter(u=>u.articleId===a.id&&u.editing)
+                          return (
+                            <div key={a.id} onClick={()=>navTo(a.id)}
+                              style={{padding:'3px 12px 3px 22px',cursor:'pointer',fontSize:'0.85rem',lineHeight:1.45,display:'flex',alignItems:'center',gap:4,
+                                background:isActive?'#e2dfd8':'transparent', color:isActive?'#1b4f72':'#222',
+                                fontWeight:isActive?600:400, borderLeft:isActive?'3px solid #1b4f72':'3px solid transparent'}}>
+                              <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</span>
+                              {editingUsers.length>0&&<span title={editingUsers.map(u=>u.displayName).join(', ')+' editing'} style={{width:7,height:7,borderRadius:'50%',background:'#f5a623',flexShrink:0}}/>}
+                            </div>
+                          )
+                        })}
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            {/* New category */}
+            <div style={{borderTop:'1px solid #ccc9c0',padding:'6px 8px'}}>
+              {showNewCatInput
+                ? <div style={{display:'flex',gap:4}}>
+                    <input autoFocus value={newCatInput} onChange={e=>setNewCatInput(e.target.value)}
+                      onKeyDown={e=>{if(e.key==='Enter')addCategory();if(e.key==='Escape'){setShowNewCatInput(false);setNewCatInput('')}}}
+                      placeholder='Category name…'
+                      style={{flex:1,padding:'3px 6px',border:'1px solid #ccc9c0',borderRadius:3,fontSize:'0.78rem',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f8f7f4',color:'#222',minWidth:0}}/>
+                    <button onClick={addCategory} style={{padding:'3px 7px',border:'none',borderRadius:3,background:'#1b4f72',color:'#fff',cursor:'pointer',fontSize:'0.75rem'}}>+</button>
+                    <button onClick={()=>{setShowNewCatInput(false);setNewCatInput('')}} style={{padding:'3px 6px',border:'1px solid #ccc9c0',borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.75rem',color:'#888'}}>✕</button>
+                  </div>
+                : <button onClick={()=>setShowNewCatInput(true)}
+                    style={{width:'100%',padding:'4px 8px',border:'1px dashed #ccc9c0',borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.75rem',color:'#888',textAlign:'left',fontFamily:"'Source Serif 4',Georgia,serif"}}>
+                    + New Category
+                  </button>
+              }
+            </div>
           </aside>
         )}
 
@@ -488,9 +557,9 @@ export default function WikiApp() {
           {articlesLoaded && Object.keys(articles).length===0 && !creating && (
             <SeedButton onSeed={()=>{}}/>
           )}
-          {creating&&<EditForm draft={newArt} setDraft={setNewArt} onSave={saveNew} onCancel={()=>setCreating(false)} isNew/>}
+          {creating&&<EditForm draft={newArt} setDraft={setNewArt} onSave={saveNew} onCancel={()=>setCreating(false)} isNew categories={allCategories}/>}
           {!creating&&editing&&editDraft&&(
-            <EditForm draft={editDraft} setDraft={setEditDraft} onSave={saveEdit} onCancel={()=>{setEditing(false);setEditDraft(null)}} onDelete={()=>deleteArticle(editDraft.id)}/>
+            <EditForm draft={editDraft} setDraft={setEditDraft} onSave={saveEdit} onCancel={()=>{setEditing(false);setEditDraft(null)}} onDelete={()=>deleteArticle(editDraft.id)} categories={allCategories}/>
           )}
           {!creating&&!editing&&article&&(
             <ArticleView article={article} onlineUsers={online}
