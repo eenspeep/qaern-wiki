@@ -203,6 +203,15 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
   const readers = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&!u.editing)
   const editors = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&u.editing)
   const linkedContent = linkifyContent(article.content||'', articles||{}, article.id, onNavigate)
+  const [lightbox, setLightbox] = useState(false)
+
+  // Close lightbox on Escape
+  useEffect(() => {
+    if (!lightbox) return
+    const handler = e => { if (e.key === 'Escape') setLightbox(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [lightbox])
 
   const handleBodyClick = e => {
     const id = e.target.closest('a[data-article-id]')?.getAttribute('data-article-id')
@@ -211,6 +220,21 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
 
   return (
     <div style={{maxWidth:780}}>
+      {/* Lightbox */}
+      {lightbox && (
+        <div onClick={()=>setLightbox(false)}
+          style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',cursor:'zoom-out'}}>
+          <div onClick={e=>e.stopPropagation()} style={{position:'relative',maxWidth:'90vw',maxHeight:'90vh',display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
+            <img src={article.portrait} alt={article.title}
+              style={{maxWidth:'90vw',maxHeight:'82vh',objectFit:'contain',borderRadius:4,boxShadow:'0 8px 48px rgba(0,0,0,0.6)'}}/>
+            <div style={{color:'#ccc',fontSize:'0.82rem',fontStyle:'italic',fontFamily:"'Source Serif 4',Georgia,serif"}}>{article.title}</div>
+            <button onClick={()=>setLightbox(false)}
+              style={{position:'absolute',top:-14,right:-14,width:30,height:30,borderRadius:'50%',background:'#333',border:'1px solid #666',color:'#fff',fontSize:'1rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
       <div style={{borderBottom:'1px solid #ccc9c0',marginBottom:'1rem',paddingBottom:'0.5rem'}}>
         <div style={{fontSize:'0.66rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#666',marginBottom:2}}>{article.category}</div>
         <h1 style={{fontFamily:"'IM Fell English',serif",fontSize:'1.95rem',color:'#1a1a1a',lineHeight:1.15}}>{article.title}</h1>
@@ -232,7 +256,8 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
           {/* Portrait */}
           <div style={{textAlign:'center',marginBottom:8}}>
             {article.portrait
-              ? <img src={article.portrait} alt={article.title} style={{width:'100%',height:'auto',borderRadius:3,border:'1px solid #ccc9c0',display:'block'}}/>
+              ? <img src={article.portrait} alt={article.title} onClick={()=>setLightbox(true)}
+                  style={{width:'100%',height:'auto',borderRadius:3,border:'1px solid #ccc9c0',display:'block',cursor:'zoom-in'}}/>
               : <div style={{width:'100%',height:160,background:'#d8d4cc',borderRadius:3,border:'1px solid #ccc9c0',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:4}}>
                   <span style={{fontSize:'2.8rem',color:'#a09890',lineHeight:1}}>?</span>
                   <span style={{fontSize:'0.68rem',color:'#a09890',letterSpacing:'0.05em'}}>No portrait</span>
