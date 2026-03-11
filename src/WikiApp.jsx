@@ -232,7 +232,7 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
           {/* Portrait */}
           <div style={{textAlign:'center',marginBottom:8}}>
             {article.portrait
-              ? <img src={article.portrait} alt={article.title} style={{width:'100%',maxHeight:220,objectFit:'cover',borderRadius:3,border:'1px solid #ccc9c0',display:'block'}}/>
+              ? <img src={article.portrait} alt={article.title} style={{width:'100%',height:'auto',borderRadius:3,border:'1px solid #ccc9c0',display:'block'}}/>
               : <div style={{width:'100%',height:160,background:'#d8d4cc',borderRadius:3,border:'1px solid #ccc9c0',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:4}}>
                   <span style={{fontSize:'2.8rem',color:'#a09890',lineHeight:1}}>?</span>
                   <span style={{fontSize:'0.68rem',color:'#a09890',letterSpacing:'0.05em'}}>No portrait</span>
