@@ -178,11 +178,36 @@ function InfoboxEditor({ infobox, onChange }) {
 }
 
 // ─── Article View ─────────────────────────────────────────────────────────────
-function ArticleView({ article, onEdit, onDelete, onlineUsers }) {
+function linkifyContent(html, articles, currentId, onNavigate) {
+  // Build a map of title -> article id, excluding the current article
+  const titleMap = {}
+  Object.values(articles).forEach(a => {
+    if (a.id !== currentId) titleMap[a.title] = a.id
+  })
+  if (Object.keys(titleMap).length === 0) return html
+
+  // Replace <strong>Title</strong> where title matches an article exactly
+  // We sort by length descending so longer titles match before shorter substrings
+  const titles = Object.keys(titleMap).sort((a,b) => b.length - a.length)
+  let result = html
+  titles.forEach(title => {
+    const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const re = new RegExp(`<strong>(${escaped})<\/strong>`, 'g')
+    result = result.replace(re, `<strong><a href="#" data-article-id="${titleMap[title]}" style="color:#1a5276;text-decoration:underline;text-underline-offset:2px;cursor:pointer;">$1</a></strong>`)
+  })
+  return result
+}
+
+function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavigate }) {
   const hasInfo = (article.infobox && Object.keys(article.infobox).length > 0) || article.portrait
-  // Who else is reading this article?
   const readers = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&!u.editing)
   const editors = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&u.editing)
+  const linkedContent = linkifyContent(article.content||'', articles||{}, article.id, onNavigate)
+
+  const handleBodyClick = e => {
+    const id = e.target.closest('a[data-article-id]')?.getAttribute('data-article-id')
+    if (id) { e.preventDefault(); onNavigate && onNavigate(id) }
+  }
 
   return (
     <div style={{maxWidth:780}}>
@@ -222,7 +247,7 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers }) {
           ))}
         </div>
       )}
-      <div className='article-body' style={{fontSize:'0.91rem'}} dangerouslySetInnerHTML={{__html:article.content}}/>
+      <div className='article-body' style={{fontSize:'0.91rem'}} onClick={handleBodyClick} dangerouslySetInnerHTML={{__html:linkedContent}}/>
       <div style={{clear:'both'}}/>
       {article.updatedAt&&(
         <div style={{marginTop:'1.5rem',paddingTop:'0.75rem',borderTop:'1px solid #e8e5e0',fontSize:'0.76rem',color:'#aaa'}}>
@@ -562,7 +587,7 @@ export default function WikiApp() {
             <EditForm draft={editDraft} setDraft={setEditDraft} onSave={saveEdit} onCancel={()=>{setEditing(false);setEditDraft(null)}} onDelete={()=>deleteArticle(editDraft.id)} categories={allCategories}/>
           )}
           {!creating&&!editing&&article&&(
-            <ArticleView article={article} onlineUsers={online}
+            <ArticleView article={article} onlineUsers={online} articles={articles} onNavigate={navTo}
               onEdit={()=>{setEditDraft(JSON.parse(JSON.stringify(article)));setEditing(true)}}
               onDelete={()=>deleteArticle(article.id)}/>
           )}
