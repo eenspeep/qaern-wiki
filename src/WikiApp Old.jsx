@@ -27,6 +27,18 @@ function flattenCategories(cats) {
   })
   return result
 }
+
+// ─── Mobile detection hook ────────────────────────────────────────────────────
+function useIsMobile(breakpoint = 680) {
+  const [mobile, setMobile] = useState(() => window.innerWidth < breakpoint)
+  useEffect(() => {
+    const handler = () => setMobile(window.innerWidth < breakpoint)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [breakpoint])
+  return mobile
+}
+
 const CONTENT_FONTS = [
   { label: 'Source Serif (Default)', value: 'Source Serif 4, Georgia, serif' },
   { label: 'IM Fell English', value: 'IM Fell English, Georgia, serif' },
@@ -475,10 +487,9 @@ export default function WikiApp() {
     if (hash) setCurrentId(hash)
   }, [])
 
-  // Keep URL hash in sync with current article; clear it on landing page
+  // Keep URL hash in sync with current article
   useEffect(() => {
     if (currentId) window.location.hash = currentId
-    else history.replaceState(null, '', window.location.pathname)
   }, [currentId])
 
   // Real-time articles subscription
@@ -488,7 +499,11 @@ export default function WikiApp() {
       snap.docs.forEach(d => { map[d.id] = { id:d.id, ...d.data() } })
       setArticles(map)
       setArticlesLoaded(true)
-      // Never force a default — let the hash or landing page decide
+      // Only pick a default if nothing is set yet (and hash didn't give us one)
+      setCurrentId(prev => {
+        if (prev) return prev
+        return snap.docs.length > 0 ? snap.docs[0].id : null
+      })
     })
     return unsub
   }, [])
@@ -631,7 +646,7 @@ export default function WikiApp() {
       {/* Header */}
       <header style={{background:'#f8f7f4',borderBottom:'1px solid #ccc9c0',padding:'0 0.75rem',display:'flex',alignItems:'center',gap:'0.5rem',height:50,flexShrink:0}}>
         <button onClick={()=>setSidebarOpen(s=>!s)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:'1.1rem',padding:'4px 6px',flexShrink:0}}>☰</button>
-        <span onClick={()=>{setCurrentId(null);setEditing(false);setCreating(false)}} style={{fontFamily:"'IM Fell English',serif",fontSize:'1.3rem',color:'#1b4f72',flexShrink:0,cursor:'pointer'}} title='Return to home'>Qærn</span>
+        <span style={{fontFamily:"'IM Fell English',serif",fontSize:'1.3rem',color:'#1b4f72',flexShrink:0}}>Qærn</span>
         {!isMobile && <span style={{fontSize:'0.67rem',color:'#888',textTransform:'uppercase',letterSpacing:'0.1em'}}>The Living Wiki</span>}
         <div style={{flex:1}}/>
         {!isMobile && <PresenceBubbles online={online} currentUser={user}/>}
@@ -817,64 +832,7 @@ export default function WikiApp() {
               onDelete={()=>deleteArticle(article.id)}/>
           )}
           {!creating&&!editing&&!article&&articlesLoaded&&Object.keys(articles).length>0&&(
-            <div style={{position:'relative',minHeight:'100%',background:'#000',overflow:'hidden',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start'}}>
-              {/* Starfield */}
-              <div style={{position:'absolute',inset:0,pointerEvents:'none',zIndex:0}}>
-                <svg width='100%' height='100%' style={{position:'absolute',inset:0}}>
-                  {Array.from({length:180}).map((_,i)=>{
-                    const x=((i*137.508)%100), y=((i*97.3)%100)
-                    const r=i%7===0?1.4:i%3===0?1:0.6
-                    const op=0.3+((i*53)%70)/100
-                    return <circle key={i} cx={x+'%'} cy={y+'%'} r={r} fill='#fff' opacity={op}/>
-                  })}
-                </svg>
-              </div>
-              {/* Planet + moons */}
-              <div style={{position:'relative',width:isMobile?260:360,height:isMobile?260:360,margin:'3rem auto 1.5rem',flexShrink:0,zIndex:1}}>
-                <div style={{position:'absolute',inset:0,animation:'orbit1 8s linear infinite',transformOrigin:'50% 50%'}}>
-                  <div style={{position:'absolute',top:'50%',left:'50%',transform:`translate(-50%,-50%) translateX(${isMobile?148:200}px)`}}>
-                    <div style={{width:isMobile?12:16,height:isMobile?12:16,borderRadius:'50%',background:'#c8b87a',boxShadow:'0 0 8px rgba(200,184,122,0.5)'}}/>
-                  </div>
-                </div>
-                <div style={{position:'absolute',inset:0,animation:'orbit2 18s linear infinite',transformOrigin:'50% 50%'}}>
-                  <div style={{position:'absolute',top:'50%',left:'50%',transform:`translate(-50%,-50%) translateX(${isMobile?170:230}px)`}}>
-                    <div style={{width:isMobile?7:10,height:isMobile?7:10,borderRadius:'50%',background:'#8899aa',boxShadow:'0 0 6px rgba(136,153,170,0.4)'}}/>
-                  </div>
-                </div>
-                <div style={{position:'absolute',inset:0,animation:'orbit3 12s linear infinite reverse',transformOrigin:'50% 50%'}}>
-                  <div style={{position:'absolute',top:'50%',left:'50%',transform:`translate(-50%,-50%) translateX(${isMobile?130:175}px) translateY(${isMobile?20:28}px)`}}>
-                    <div style={{width:isMobile?5:7,height:isMobile?5:7,borderRadius:'50%',background:'#cc9966',boxShadow:'0 0 5px rgba(204,153,102,0.4)'}}/>
-                  </div>
-                </div>
-                <img src='/qaern-planet.png' alt='Qærn'
-                  style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'contain',
-                    filter:'drop-shadow(0 0 32px rgba(80,180,80,0.25))',
-                    animation:'slowspin 120s linear infinite'}}/>
-              </div>
-              <style>{`
-                @keyframes orbit1 { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-                @keyframes orbit2 { from{transform:rotate(40deg)} to{transform:rotate(400deg)} }
-                @keyframes orbit3 { from{transform:rotate(220deg)} to{transform:rotate(-140deg)} }
-                @keyframes slowspin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-              `}</style>
-              <div style={{textAlign:'center',zIndex:1,padding:'0 1rem 2rem'}}>
-                <div style={{fontFamily:"'IM Fell English',serif",fontSize:isMobile?'2.6rem':'3.5rem',color:'#d4eed4',lineHeight:1,marginBottom:'0.35rem',textShadow:'0 0 30px rgba(80,200,80,0.3)'}}>Qærn</div>
-                <div style={{fontSize:'0.68rem',textTransform:'uppercase',letterSpacing:'0.2em',color:'#4a7a4a',marginBottom:'1.5rem'}}>The Living Wiki</div>
-                <p style={{fontFamily:"'IM Fell English',serif",fontSize:'0.95rem',color:'#556655',lineHeight:1.8,fontStyle:'italic',margin:'0 auto 1.8rem',maxWidth:400}}>
-                  "The Wyld does not forget. Neither does the Library."
-                </p>
-                <div style={{display:'flex',flexWrap:'wrap',gap:'0.5rem',justifyContent:'center',maxWidth:500,margin:'0 auto'}}>
-                  {Object.values(articles).slice(0,8).map(a=>(
-                    <button key={a.id} onClick={()=>navTo(a.id)}
-                      style={{padding:'6px 14px',border:'1px solid #2a4a2a',borderRadius:20,
-                        background:'rgba(20,40,20,0.6)',cursor:'pointer',
-                        fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.82rem',color:'#8aba8a'}}>
-                      {a.title}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <div style={{color:'#888',fontStyle:'italic'}}>Select an article from the sidebar.</div>
           )}
         </main>
       </div>
