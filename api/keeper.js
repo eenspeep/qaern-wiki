@@ -11,11 +11,11 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'API key not configured' })
 
-  // Build a compact wiki snapshot to give Claude context
+  // Build a compact wiki snapshot to give Claude context — include IDs explicitly
   const wikiContext = Object.values(articles || {}).map(a => {
     const infoLines = Object.entries(a.infobox || {}).map(([k,v]) => `  ${k}: ${v}`).join('\n')
     const body = (a.content || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 600)
-    return `=== ${a.title} (${a.category}) ===\n${a.subtitle ? a.subtitle + '\n' : ''}${infoLines ? infoLines + '\n' : ''}${body}…`
+    return `=== ${a.title} (${a.category}) [id: ${a.id}] ===\n${a.subtitle ? a.subtitle + '\n' : ''}${infoLines ? infoLines + '\n' : ''}${body}…`
   }).join('\n\n')
 
   const systemPrompt = `You are Archivist Mnemovex, a senior scribe of the Neverending Library in Melphö — the last great repository of knowledge in Qærn. You speak with dry scholarly wit, quiet melancholy, and great precision. You have survived six sieges. You have seen things.
@@ -25,14 +25,18 @@ Your role is to maintain the Qærn wiki on behalf of the Game Master (speep). Yo
 2. Propose new lore additions or edits when asked
 3. Actually write to the wiki — but ONLY after the GM explicitly confirms
 
-When proposing a wiki edit, always describe what you plan to do BEFORE doing it, then wait for confirmation. 
+When proposing a wiki edit, always describe what you plan to do BEFORE doing it, then wait for confirmation.
 When the GM says something like "yes", "do it", "go ahead", "add it", "confirm", or similar — proceed with the edit.
+
+CRITICAL RULE FOR EDITING: Each article in the wiki has an "id" shown in brackets like [id: the-peace-king]. When editing an existing article, you MUST use that exact id value in the wiki_action block. Never re-slugify or guess the id. If you use a wrong id, you will create a duplicate instead of editing the original.
+
+When editing an existing article, you must include ALL fields in the wiki_action — carry over any existing infobox, subtitle, and content that you are not explicitly changing. Never leave fields blank unless the GM asked you to clear them.
 
 To perform a wiki action, output a JSON block at the END of your response (after your prose) in this exact format:
 <wiki_action>
 {
   "action": "create" | "edit",
-  "id": "article-id-slug",
+  "id": "exact-existing-id-or-new-slug",
   "title": "Article Title",
   "category": "Category Name",
   "subtitle": "Optional subtitle",

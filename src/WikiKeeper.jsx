@@ -50,20 +50,23 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
 
   const executeAction = async (action) => {
     const id = action.id || slugify(action.title)
-    const existing = articles[id]
+    // Try exact ID match first, then fall back to matching by title
+    const existing = articles[id] ||
+      Object.values(articles).find(a => a.title.toLowerCase() === action.title.toLowerCase())
+    const finalId = existing ? existing.id : id
     const articleData = {
-      id,
+      id: finalId,
       title: action.title,
-      category: action.category || 'Lore & History',
-      subtitle: action.subtitle || '',
-      infobox: action.infobox || {},
-      content: action.content || '',
+      category: action.category || existing?.category || 'Lore & History',
+      subtitle: action.subtitle !== undefined ? action.subtitle : (existing?.subtitle || ''),
+      infobox: action.infobox !== undefined ? action.infobox : (existing?.infobox || {}),
+      content: action.content !== undefined ? action.content : (existing?.content || ''),
       portrait: existing?.portrait || '',
       updatedAt: serverTimestamp(),
       updatedBy: 'Archivist Mnemovex',
       ...(existing ? {} : { createdAt: serverTimestamp() }),
     }
-    await setDoc(doc(db, 'articles', id), articleData)
+    await setDoc(doc(db, 'articles', finalId), articleData)
     await addDoc(collection(db, 'changelog'), {
       action: existing ? 'edited' : 'created',
       articleTitle: action.title,
@@ -72,8 +75,8 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
       userId: 'wiki-keeper',
       timestamp: serverTimestamp(),
     })
-    onArticleChanged?.(id)
-    return existing ? `edited` : `created`
+    onArticleChanged?.(finalId)
+    return existing ? 'edited' : 'created'
   }
 
   const send = async (overrideText) => {
