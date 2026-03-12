@@ -221,6 +221,7 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
   const editors = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&u.editing)
   const linkedContent = linkifyContent(article.content||'', articles||{}, article.id, onNavigate)
   const [lightbox, setLightbox] = useState(false)
+  const isMobile = useIsMobile()
 
   // Close lightbox on Escape
   useEffect(() => {
@@ -254,7 +255,7 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
       )}
       <div style={{borderBottom:'1px solid #ccc9c0',marginBottom:'1rem',paddingBottom:'0.5rem'}}>
         <div style={{fontSize:'0.66rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#666',marginBottom:2}}>{article.category}</div>
-        <h1 style={{fontFamily:"'IM Fell English',serif",fontSize:'1.95rem',color:'#1a1a1a',lineHeight:1.15}}>{article.title}</h1>
+        <h1 style={{fontFamily:"'IM Fell English',serif",fontSize:isMobile?'1.5rem':'1.95rem',color:'#1a1a1a',lineHeight:1.15}}>{article.title}</h1>
         {article.subtitle&&<div style={{fontStyle:'italic',color:'#666',marginTop:3,fontSize:'0.92rem'}}>{article.subtitle}</div>}
         {editors.length>0&&(
           <div style={{marginTop:6,padding:'4px 10px',background:'#fff9e6',border:'1px solid #f5e0a0',borderRadius:4,fontSize:'0.78rem',color:'#a07020',display:'inline-flex',alignItems:'center',gap:6}}>
@@ -268,7 +269,10 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
         </div>
       </div>
       {hasInfo&&(
-        <div style={{float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}}>
+        <div style={isMobile
+          ? {width:'100%',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
+          : {float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
+        }>
           <div style={{fontFamily:"'IM Fell English',serif",fontWeight:600,fontSize:'0.88rem',marginBottom:6,borderBottom:'1px solid #ccc9c0',paddingBottom:4,color:'#1b4f72'}}>{article.title}</div>
           {/* Portrait */}
           <div style={{textAlign:'center',marginBottom:8}}>
@@ -347,6 +351,7 @@ function ChangelogPanel({ onClose }) {
 // ─── Edit Form ────────────────────────────────────────────────────────────────
 function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categories }) {
   const [preview, setPreview] = useState(false)
+  const isMobile = useIsMobile()
   const inp = {width:'100%',background:'#f8f7f4',color:'#222',border:'1px solid #ccc9c0',borderRadius:3,padding:'6px 10px',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.9rem',marginBottom:8,boxSizing:'border-box'}
   const lb = {display:'block',fontSize:'0.69rem',color:'#666',marginBottom:3,textTransform:'uppercase',letterSpacing:'0.07em',marginTop:10}
   const bt = (v='def') => ({padding:'6px 14px',borderRadius:3,border:'1px solid',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.83rem',fontWeight:500,marginRight:6,
@@ -363,7 +368,7 @@ function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categori
       {preview&&!isNew
         ? <ArticleView article={draft} onlineUsers={{}}/>
         : <>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0 1rem'}}>
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:'0 1rem'}}>
               <div><label style={lb}>Title</label><input style={inp} value={draft.title} onChange={e=>setDraft(p=>({...p,title:e.target.value}))} placeholder='e.g. The Worldheart'/></div>
               <div><label style={lb}>Category</label><select style={inp} value={draft.category} onChange={e=>setDraft(p=>({...p,category:e.target.value}))}>{(categories||DEFAULT_CATEGORIES).map(c=><option key={c}>{c}</option>)}</select></div>
             </div>
@@ -452,7 +457,7 @@ export default function WikiApp() {
   const [editDraft, setEditDraft] = useState(null)
   const [creating, setCreating] = useState(false)
   const [newArt, setNewArt] = useState({ title:'',category:'Lore & History',subtitle:'',content:'',infobox:{} })
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 680)
   const [showChangelog, setShowChangelog] = useState(false)
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   const [collapsedCats, setCollapsedCats] = useState({})
@@ -461,6 +466,7 @@ export default function WikiApp() {
   const [editingCat, setEditingCat] = useState(null)   // { type:'cat'|'sub', catIdx, subIdx?, value }
   const [newSubInput, setNewSubInput] = useState(null)  // catIdx or null
 
+  const isMobile = useIsMobile()
   const online = usePresence(user, currentId, editing)
 
   // Read initial article ID from URL hash (e.g. #the-wyld)
@@ -618,35 +624,64 @@ export default function WikiApp() {
   }
 
   const toggleCat = key => setCollapsedCats(p => ({...p, [key]: !p[key]}))
-  const navTo = id => { setCurrentId(id); setEditing(false); setCreating(false) }
+  const navTo = id => { setCurrentId(id); setEditing(false); setCreating(false); if (isMobile) setSidebarOpen(false) }
   const allFlatCategories = flattenCategories(catTree)
+
+  const closeSidebarOnMobile = () => { if (isMobile) setSidebarOpen(false) }
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f8f7f4',color:'#222'}}>
       {/* Header */}
-      <header style={{background:'#f8f7f4',borderBottom:'1px solid #ccc9c0',padding:'0 1rem',display:'flex',alignItems:'center',gap:'0.75rem',height:50,flexShrink:0}}>
-        <button onClick={()=>setSidebarOpen(s=>!s)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:'1rem',padding:'4px 5px'}}>☰</button>
-        <span style={{fontFamily:"'IM Fell English',serif",fontSize:'1.3rem',color:'#1b4f72'}}>Qærn</span>
-        <span style={{fontSize:'0.67rem',color:'#888',textTransform:'uppercase',letterSpacing:'0.1em'}}>The Living Wiki</span>
+      <header style={{background:'#f8f7f4',borderBottom:'1px solid #ccc9c0',padding:'0 0.75rem',display:'flex',alignItems:'center',gap:'0.5rem',height:50,flexShrink:0}}>
+        <button onClick={()=>setSidebarOpen(s=>!s)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:'1.1rem',padding:'4px 6px',flexShrink:0}}>☰</button>
+        <span style={{fontFamily:"'IM Fell English',serif",fontSize:'1.3rem',color:'#1b4f72',flexShrink:0}}>Qærn</span>
+        {!isMobile && <span style={{fontSize:'0.67rem',color:'#888',textTransform:'uppercase',letterSpacing:'0.1em'}}>The Living Wiki</span>}
         <div style={{flex:1}}/>
-        <PresenceBubbles online={online} currentUser={user}/>
-        <input placeholder='Search…' value={search} onChange={e=>setSearch(e.target.value)}
-          style={{padding:'4px 10px',border:'1px solid #ccc9c0',borderRadius:3,fontSize:'0.82rem',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f0eeea',color:'#222',width:180}}/>
-        <button onClick={()=>setShowChangelog(s=>!s)}
-          style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555'}}>📋 Changelog</button>
-        <button onClick={()=>{setCreating(true);setEditing(false)}}
-          style={{padding:'5px 14px',borderRadius:3,border:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.83rem',background:'#1b4f72',color:'#fff'}}>+ New Article</button>
-        <div style={{display:'flex',alignItems:'center',gap:6,borderLeft:'1px solid #ccc9c0',paddingLeft:'0.75rem',marginLeft:4}}>
+        {!isMobile && <PresenceBubbles online={online} currentUser={user}/>}
+        {!isMobile && (
+          <input placeholder='Search…' value={search} onChange={e=>setSearch(e.target.value)}
+            style={{padding:'4px 10px',border:'1px solid #ccc9c0',borderRadius:3,fontSize:'0.82rem',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f0eeea',color:'#222',width:160}}/>
+        )}
+        {!isMobile && (
+          <button onClick={()=>setShowChangelog(s=>!s)}
+            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📋 Changelog</button>
+        )}
+        {!isMobile && (
+          <button onClick={()=>{setCreating(true);setEditing(false)}}
+            style={{padding:'5px 14px',borderRadius:3,border:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.83rem',background:'#1b4f72',color:'#fff',flexShrink:0}}>+ New Article</button>
+        )}
+        <div style={{display:'flex',alignItems:'center',gap:isMobile?4:6,borderLeft:'1px solid #ccc9c0',paddingLeft:isMobile?'0.5rem':'0.75rem',marginLeft:isMobile?0:4}}>
           <div style={{width:28,height:28,borderRadius:'50%',background:uidColor(user.uid),display:'flex',alignItems:'center',justifyContent:'center',fontSize:'0.68rem',fontWeight:700,color:'#fff',flexShrink:0}}>{initials(user.displayName||user.email)}</div>
-          <span style={{fontSize:'0.8rem',color:'#555',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.displayName||user.email}</span>
+          {!isMobile && <span style={{fontSize:'0.8rem',color:'#555',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.displayName||user.email}</span>}
           <button onClick={logout} style={{padding:'3px 8px',border:'1px solid #ccc9c0',borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.75rem',color:'#888'}}>Sign out</button>
         </div>
       </header>
 
-      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
-        {/* Sidebar */}
+      {/* Mobile search bar */}
+      {isMobile && (
+        <div style={{padding:'6px 10px',borderBottom:'1px solid #e8e5e0',background:'#f8f7f4',display:'flex',gap:6}}>
+          <input placeholder='Search articles…' value={search} onChange={e=>setSearch(e.target.value)}
+            style={{flex:1,padding:'6px 10px',border:'1px solid #ccc9c0',borderRadius:4,fontSize:'0.88rem',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f0eeea',color:'#222'}}/>
+        </div>
+      )}
+
+      <div style={{display:'flex',flex:1,overflow:'hidden',position:'relative'}}>
+        {/* Sidebar — slide-over on mobile, fixed panel on desktop */}
+        {isMobile && sidebarOpen && (
+          <div onClick={()=>setSidebarOpen(false)}
+            style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.35)',zIndex:50}}/>
+        )}
         {sidebarOpen&&(
-          <aside style={{width:230,background:'#f0eeea',borderRight:'1px solid #ccc9c0',overflowY:'auto',padding:'0.6rem 0',flexShrink:0,display:'flex',flexDirection:'column'}}>
+          <aside style={{
+            ...(isMobile ? {
+              position:'absolute',top:0,left:0,bottom:0,zIndex:51,
+              width:'80vw',maxWidth:300,boxShadow:'4px 0 20px rgba(0,0,0,0.15)',
+            } : {
+              width:230,flexShrink:0,
+            }),
+            background:'#f0eeea',borderRight:'1px solid #ccc9c0',
+            overflowY:'auto',padding:'0.6rem 0',display:'flex',flexDirection:'column',
+          }}>
             <div style={{flex:1}}>
               {catTree.map((cat, catIdx) => {
                 const catCollapsed = !!collapsedCats[cat.name]
@@ -771,7 +806,7 @@ export default function WikiApp() {
         )}
 
         {/* Main */}
-        <main style={{flex:1,overflowY:'auto',padding:'1.5rem 2rem'}}>
+        <main style={{flex:1,overflowY:'auto',padding:isMobile?'1rem':'1.5rem 2rem'}}>
           {articlesLoaded && Object.keys(articles).length===0 && !creating && (
             <SeedButton onSeed={()=>{}}/>
           )}
@@ -791,6 +826,27 @@ export default function WikiApp() {
       </div>
 
       {showChangelog&&<ChangelogPanel onClose={()=>setShowChangelog(false)}/>}
+
+      {/* Mobile bottom toolbar */}
+      {isMobile && (
+        <div style={{borderTop:'1px solid #ccc9c0',background:'#f8f7f4',display:'flex',height:52,flexShrink:0}}>
+          <button onClick={()=>setShowChangelog(s=>!s)}
+            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,borderRight:'1px solid #e8e5e0'}}>
+            <span style={{fontSize:'1.1rem'}}>📋</span>
+            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Changelog</span>
+          </button>
+          <button onClick={()=>{setCreating(true);setEditing(false);setSidebarOpen(false)}}
+            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#1b4f72',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
+            <span style={{fontSize:'1.1rem'}}>✍</span>
+            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>New Article</span>
+          </button>
+          <button onClick={()=>setSidebarOpen(s=>!s)}
+            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,borderLeft:'1px solid #e8e5e0'}}>
+            <span style={{fontSize:'1.1rem'}}>📑</span>
+            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Articles</span>
+          </button>
+        </div>
+      )}
 
       <WikiKeeper
         articles={articles}
