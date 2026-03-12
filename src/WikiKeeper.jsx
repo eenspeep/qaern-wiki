@@ -1,45 +1,86 @@
 import { useState, useRef, useEffect } from 'react'
-import { doc, setDoc, addDoc, collection, serverTimestamp } from 'firebase/firestore'
+import { doc, setDoc, addDoc, getDoc, collection, serverTimestamp } from 'firebase/firestore'
 import { db } from './firebase'
 
 const ADMIN_USERNAME = 'speep'
+const HISTORY_DOC = 'keeper_history/speep'
 
 export function isAdmin(user) {
   return user?.displayName === ADMIN_USERNAME
 }
 
-// Parse a <wiki_action> block out of Claude's response if present
+// Parse a <wiki_action> block — handles both escaped and unescaped closing tags
 function parseWikiAction(text) {
   const match = text.match(/<wiki_action>\s*([\s\S]*?)\s*<\/wiki_action>/)
   if (!match) return null
-  try { return JSON.parse(match[1]) } catch { return null }
+  try {
+    return JSON.parse(match[1])
+  } catch (e) {
+    // Try stripping any trailing comma issues
+    try { return JSON.parse(match[1].replace(/,\s*}/, '}').replace(/,\s*]/, ']')) } catch {}
+    console.warn('wiki_action parse failed:', e.message, '\nRaw:', match[1])
+    return null
+  }
 }
 
-// Strip the <wiki_action> block from displayed text
 function stripWikiAction(text) {
   return text.replace(/<wiki_action>[\s\S]*?<\/wiki_action>/, '').trim()
 }
 
 export default function WikiKeeper({ articles, user, onArticleChanged }) {
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState([])
+  const [messages, setMessages] = useState([])   // display messages
+  const [history, setHistory] = useState([])     // raw Anthropic-format history
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const [pendingAction, setPendingAction] = useState(null)
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
 
+  // Load conversation history from Firestore on mount
   useEffect(() => {
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 50)
-      if (messages.length === 0) {
+    if (!isAdmin(user)) return
+    getDoc(doc(db, HISTORY_DOC)).then(snap => {
+      if (snap.exists()) {
+        const data = snap.data()
+        setHistory(data.history || [])
+        setMessages(data.display || [])
+      } else {
+        // First ever open — set greeting
         setMessages([{
           role: 'assistant',
           text: 'The candles are lit. The inkwells are full. What does the Library require of me this evening, Archivist-in-Chief?',
           ts: Date.now(),
         }])
       }
+      setHistoryLoaded(true)
+    }).catch(() => {
+      setHistoryLoaded(true)
+      setMessages([{
+        role: 'assistant',
+        text: 'The candles are lit. The inkwells are full. What does the Library require of me this evening, Archivist-in-Chief?',
+        ts: Date.now(),
+      }])
+    })
+  }, [user])
+
+  // Save history to Firestore whenever it changes
+  const saveHistory = async (newHistory, newDisplay) => {
+    try {
+      await setDoc(doc(db, HISTORY_DOC), {
+        history: newHistory,
+        // Only save last 60 display messages to keep doc size reasonable
+        display: newDisplay.slice(-60),
+        updatedAt: serverTimestamp(),
+      })
+    } catch (e) {
+      console.warn('Failed to save keeper history:', e)
     }
+  }
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 50)
   }, [open])
 
   useEffect(() => {
@@ -50,7 +91,6 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
 
   const executeAction = async (action) => {
     const id = action.id || slugify(action.title)
-    // Try exact ID match first, then fall back to matching by title
     const existing = articles[id] ||
       Object.values(articles).find(a => a.title.toLowerCase() === action.title.toLowerCase())
     const finalId = existing ? existing.id : id
@@ -85,40 +125,61 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
     setInput('')
 
     const userMsg = { role: 'user', text, ts: Date.now() }
-    const nextMessages = [...messages, userMsg]
-    setMessages(nextMessages)
+    const newDisplay = [...messages, userMsg]
+    setMessages(newDisplay)
     setLoading(true)
 
-    // Convert to Anthropic message format
-    const apiMessages = nextMessages
-      .filter(m => m.role === 'user' || m.role === 'assistant')
-      .map(m => ({ role: m.role, content: m.role === 'assistant' ? (m.rawText || m.text) : m.text }))
+    // Build Anthropic history — strip wiki_action blocks from assistant turns
+    // so Claude doesn't re-execute old actions, and use stripped text for history
+    const newHistory = [...history, { role: 'user', content: text }]
 
     try {
       const res = await fetch('/api/keeper', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages, articles }),
+        body: JSON.stringify({ messages: newHistory, articles }),
       })
       const data = await res.json()
+
+      if (!res.ok) {
+        const errMsg = data?.error?.message || data?.error || `API error ${res.status}`
+        throw new Error(errMsg)
+      }
+
       const rawText = data.content?.[0]?.text || '(No response.)'
       const action = parseWikiAction(rawText)
       const displayText = stripWikiAction(rawText)
 
+      // For history, store the stripped version so Claude doesn't see old wiki_action blocks
+      const assistantHistoryEntry = { role: 'assistant', content: stripWikiAction(rawText) }
+      const updatedHistory = [...newHistory, assistantHistoryEntry]
+
+      const assistantDisplayMsg = {
+        role: 'assistant',
+        text: displayText,
+        rawText,
+        ts: Date.now(),
+        pendingAction: action || undefined,
+      }
+      const updatedDisplay = [...newDisplay, assistantDisplayMsg]
+
+      setHistory(updatedHistory)
+      setMessages(updatedDisplay)
+
       if (action) {
         setPendingAction(action)
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          text: displayText,
-          rawText,
-          ts: Date.now(),
-          pendingAction: action,
-        }])
-      } else {
-        setMessages(prev => [...prev, { role: 'assistant', text: displayText, rawText, ts: Date.now() }])
       }
+
+      await saveHistory(updatedHistory, updatedDisplay)
     } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', text: `*A quill snaps. An inkwell overturns.* (Error: ${err.message})`, ts: Date.now() }])
+      const errDisplay = {
+        role: 'assistant',
+        text: `*A quill snaps. An inkwell overturns.* (${err.message})`,
+        ts: Date.now(),
+      }
+      const updatedDisplay = [...newDisplay, errDisplay]
+      setMessages(updatedDisplay)
+      await saveHistory(newHistory, updatedDisplay)
     }
     setLoading(false)
   }
@@ -128,18 +189,24 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
     setLoading(true)
     try {
       const result = await executeAction(pendingAction)
-      setMessages(prev => [...prev, {
+      const confirmMsg = {
         role: 'assistant',
-        text: `*The quill scratches across parchment. A new entry takes its place in the stacks.* Article **${pendingAction.title}** has been ${result} in the Library.`,
+        text: `*The quill scratches across parchment.* Article **${pendingAction.title}** has been ${result} in the Library.`,
         ts: Date.now(),
         isConfirmation: true,
-      }])
+      }
+      const updatedDisplay = [...messages, confirmMsg]
+      setMessages(updatedDisplay)
+      await saveHistory(history, updatedDisplay)
     } catch (err) {
-      setMessages(prev => [...prev, {
+      const errMsg = {
         role: 'assistant',
         text: `*The ink runs. Something has gone wrong.* (${err.message})`,
         ts: Date.now(),
-      }])
+      }
+      const updatedDisplay = [...messages, errMsg]
+      setMessages(updatedDisplay)
+      await saveHistory(history, updatedDisplay)
     }
     setPendingAction(null)
     setLoading(false)
@@ -147,11 +214,27 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
 
   const dismissAction = () => {
     setPendingAction(null)
-    setMessages(prev => [...prev, {
+    const dismissMsg = {
       role: 'assistant',
       text: '*Very well. The parchment is set aside. What else?*',
       ts: Date.now(),
-    }])
+    }
+    const updatedDisplay = [...messages, dismissMsg]
+    setMessages(updatedDisplay)
+    saveHistory(history, updatedDisplay)
+  }
+
+  const clearHistory = async () => {
+    if (!confirm('Clear all conversation history with Mnemovex?')) return
+    const greeting = {
+      role: 'assistant',
+      text: 'The slates are wiped clean. A fresh ledger lies open. What does the Library require?',
+      ts: Date.now(),
+    }
+    setHistory([])
+    setMessages([greeting])
+    setPendingAction(null)
+    await saveHistory([], [greeting])
   }
 
   if (!isAdmin(user)) return null
@@ -187,8 +270,7 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
           {/* Header */}
           <div style={{
             padding: '10px 14px', borderBottom: '1px solid #2a3a5a',
-            background: '#141428',
-            display: 'flex', alignItems: 'center', gap: 10,
+            background: '#141428', display: 'flex', alignItems: 'center', gap: 10,
           }}>
             <span style={{ fontSize: '1.1rem' }}>📜</span>
             <div>
@@ -200,8 +282,12 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
               </div>
             </div>
             <div style={{ flex: 1 }} />
+            <button onClick={clearHistory} title="Clear conversation history"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#4a5a7a', fontSize: '0.75rem', padding: '2px 4px' }}>
+              🗑
+            </button>
             <div style={{
-              width: 8, height: 8, borderRadius: '50%',
+              width: 8, height: 8, borderRadius: '50%', marginLeft: 4,
               background: loading ? '#f5a623' : '#4caf50',
               boxShadow: `0 0 6px ${loading ? '#f5a623' : '#4caf50'}`,
             }} />
@@ -209,7 +295,12 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
 
           {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {messages.map((m, i) => (
+            {!historyLoaded && (
+              <div style={{ color: '#6a7fa5', fontSize: '0.8rem', fontStyle: 'italic', textAlign: 'center', marginTop: 20 }}>
+                Consulting the archives…
+              </div>
+            )}
+            {historyLoaded && messages.map((m, i) => (
               <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
                 <div style={{
                   maxWidth: '88%', padding: '8px 12px', borderRadius: 8,
@@ -217,18 +308,15 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
                   background: m.role === 'user' ? '#1b4f72' : m.isConfirmation ? '#1a3a1a' : '#252540',
                   color: m.role === 'user' ? '#e8f0ff' : '#c8c0b0',
                   border: m.role === 'user' ? 'none' : m.isConfirmation ? '1px solid #2d5a2d' : '1px solid #2a3a5a',
-                  fontStyle: m.role === 'assistant' ? 'normal' : 'normal',
                 }}>
-                  {/* Render simple markdown-ish: **bold** and *italic* */}
                   {m.text.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/).map((chunk, ci) => {
                     if (chunk.startsWith('**') && chunk.endsWith('**'))
-                      return <strong key={ci}>{chunk.slice(2,-2)}</strong>
+                      return <strong key={ci}>{chunk.slice(2, -2)}</strong>
                     if (chunk.startsWith('*') && chunk.endsWith('*'))
-                      return <em key={ci}>{chunk.slice(1,-1)}</em>
+                      return <em key={ci}>{chunk.slice(1, -1)}</em>
                     return chunk
                   })}
                 </div>
-                {/* Pending action confirmation buttons */}
                 {m.pendingAction && pendingAction && (
                   <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
                     <button onClick={confirmAction} disabled={loading}
@@ -245,7 +333,7 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
             ))}
             {loading && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#6a7fa5', fontSize: '0.8rem', fontStyle: 'italic' }}>
-                <span style={{ animation: 'none' }}>✦</span> The Archivist considers…
+                <span>✦</span> The Archivist considers…
               </div>
             )}
             <div ref={bottomRef} />
@@ -256,7 +344,7 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
             <input ref={inputRef} value={input} onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
               placeholder="Speak to the Archivist…"
-              disabled={loading}
+              disabled={loading || !historyLoaded}
               style={{
                 flex: 1, padding: '7px 10px',
                 background: '#252540', border: '1px solid #2a3a5a', borderRadius: 4,
@@ -264,7 +352,7 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
                 fontFamily: "'Source Serif 4', Georgia, serif",
                 outline: 'none',
               }} />
-            <button onClick={() => send()} disabled={loading || !input.trim()}
+            <button onClick={() => send()} disabled={loading || !input.trim() || !historyLoaded}
               style={{
                 padding: '7px 14px', border: 'none', borderRadius: 4,
                 background: input.trim() && !loading ? '#1b4f72' : '#2a3a5a',

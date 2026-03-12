@@ -477,6 +477,12 @@ export default function WikiApp() {
   const [showNewCatInput, setShowNewCatInput] = useState(false)
   const [editingCat, setEditingCat] = useState(null)   // { type:'cat'|'sub', catIdx, subIdx?, value }
   const [newSubInput, setNewSubInput] = useState(null)  // catIdx or null
+  // Drag state
+  const [dragArticle, setDragArticle] = useState(null)  // { id, fromCategory }
+  const [dragOverCat, setDragOverCat] = useState(null)  // category key being hovered
+  const [dragOverArticle, setDragOverArticle] = useState(null) // article id being hovered
+  const [dragCatIdx, setDragCatIdx] = useState(null)    // category index being dragged
+  const [dragOverCatIdx, setDragOverCatIdx] = useState(null)
 
   const isMobile = useIsMobile()
   const online = usePresence(user, currentId, editing)
@@ -636,6 +642,88 @@ export default function WikiApp() {
   const navTo = id => { setCurrentId(id); setEditing(false); setCreating(false); if (isMobile) setSidebarOpen(false) }
   const allFlatCategories = flattenCategories(catTree)
 
+  // Sort articles within each category by their order field
+  Object.keys(byCategory).forEach(key => {
+    byCategory[key].sort((a, b) => (a.order ?? 9999) - (b.order ?? 9999))
+  })
+
+  // ── Drag handlers ─────────────────────────────────────────────────────────
+  const onArticleDragStart = (e, articleId, fromCategory) => {
+    setDragArticle({ id: articleId, fromCategory })
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', articleId)
+  }
+
+  const onArticleDragEnd = () => {
+    setDragArticle(null); setDragOverCat(null); setDragOverArticle(null)
+  }
+
+  const onCatDragOver = (e, catKey) => {
+    e.preventDefault(); e.stopPropagation()
+    setDragOverCat(catKey); setDragOverArticle(null)
+  }
+
+  const onArticleDragOver = (e, articleId) => {
+    e.preventDefault(); e.stopPropagation()
+    setDragOverArticle(articleId); setDragOverCat(null)
+  }
+
+  const onDropOnCategory = async (e, targetCategory) => {
+    e.preventDefault()
+    if (!dragArticle) return
+    const { id, fromCategory } = dragArticle
+    setDragArticle(null); setDragOverCat(null); setDragOverArticle(null)
+    if (targetCategory === fromCategory) return
+    // Move article to new category, place at end
+    const articlesInTarget = byCategory[targetCategory] || []
+    const maxOrder = articlesInTarget.reduce((m, a) => Math.max(m, a.order ?? 0), 0)
+    await setDoc(doc(db, 'articles', id), { category: targetCategory, order: maxOrder + 1 }, { merge: true })
+  }
+
+  const onDropOnArticle = async (e, targetArticleId, targetCategory) => {
+    e.preventDefault()
+    if (!dragArticle) return
+    const { id: dragId } = dragArticle
+    setDragArticle(null); setDragOverCat(null); setDragOverArticle(null)
+    if (dragId === targetArticleId) return
+    // Reorder: insert dragId before targetArticleId in targetCategory
+    const list = [...(byCategory[targetCategory] || [])]
+    const filtered = list.filter(a => a.id !== dragId)
+    const targetIdx = filtered.findIndex(a => a.id === targetArticleId)
+    filtered.splice(targetIdx, 0, articles[dragId] || { id: dragId })
+    // Write new order values
+    const batch = []
+    filtered.forEach((a, i) => {
+      batch.push(setDoc(doc(db, 'articles', a.id), { category: targetCategory, order: i }, { merge: true }))
+    })
+    await Promise.all(batch)
+  }
+
+  // Category drag-to-reorder
+  const onCatHeaderDragStart = (e, catIdx) => {
+    setDragCatIdx(catIdx)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', 'cat:' + catIdx)
+  }
+
+  const onCatHeaderDragOver = (e, catIdx) => {
+    e.preventDefault(); setDragOverCatIdx(catIdx)
+  }
+
+  const onCatHeaderDrop = (e, targetIdx) => {
+    e.preventDefault()
+    if (dragCatIdx === null || dragCatIdx === targetIdx) { setDragCatIdx(null); setDragOverCatIdx(null); return }
+    setCategories(cats => {
+      const next = [...cats]
+      const [moved] = next.splice(dragCatIdx, 1)
+      next.splice(targetIdx, 0, moved)
+      return next
+    })
+    setDragCatIdx(null); setDragOverCatIdx(null)
+  }
+
+  const onCatHeaderDragEnd = () => { setDragCatIdx(null); setDragOverCatIdx(null) }
+
   const closeSidebarOnMobile = () => { if (isMobile) setSidebarOpen(false) }
 
   return (
@@ -695,9 +783,60 @@ export default function WikiApp() {
               {catTree.map((cat, catIdx) => {
                 const catCollapsed = !!collapsedCats[cat.name]
                 const isEditingCatName = editingCat?.type==='cat' && editingCat.catIdx===catIdx
+                const isCatDropTarget = dragArticle && dragOverCat === cat.name
+                const isCatBeingDragged = dragCatIdx === catIdx
+                const isCatDragOver = dragOverCatIdx === catIdx && dragCatIdx !== null && dragCatIdx !== catIdx
+
+                const renderArticle = (a, indent, targetCat) => {
+                  const isActive = currentId===a.id&&!creating
+                  const editingUsers = Object.values(online).filter(u=>u.articleId===a.id&&u.editing)
+                  const isDropTarget = dragArticle && dragOverArticle === a.id
+                  return (
+                    <div key={a.id}
+                      draggable
+                      onDragStart={e=>onArticleDragStart(e, a.id, targetCat)}
+                      onDragEnd={onArticleDragEnd}
+                      onDragOver={e=>onArticleDragOver(e, a.id)}
+                      onDrop={e=>onDropOnArticle(e, a.id, targetCat)}
+                      onClick={()=>navTo(a.id)}
+                      style={{padding:`3px 10px 3px ${indent}px`,cursor:'grab',fontSize:'0.84rem',lineHeight:1.45,
+                        display:'flex',alignItems:'center',gap:4,userSelect:'none',
+                        background:isDropTarget?'#d4e8f0':isActive?'#e2dfd8':'transparent',
+                        color:isActive?'#1b4f72':'#222',
+                        fontWeight:isActive?600:400,
+                        borderLeft:isDropTarget?'3px solid #1b9bc8':isActive?'3px solid #1b4f72':'3px solid transparent',
+                        borderTop:isDropTarget?'2px solid #1b9bc8':'none',
+                        opacity:dragArticle?.id===a.id?0.4:1,
+                        transition:'background 0.1s,border-color 0.1s'}}>
+                      <span style={{color:'#ccc',fontSize:'0.65rem',cursor:'grab',flexShrink:0,marginRight:2}}>⠿</span>
+                      <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</span>
+                      {editingUsers.length>0&&<span style={{width:7,height:7,borderRadius:'50%',background:'#f5a623',flexShrink:0}}/>}
+                    </div>
+                  )
+                }
+
                 return (
-                  <div key={cat.name} style={{marginBottom:'0.15rem'}}>
-                    <div style={{display:'flex',alignItems:'center',padding:'5px 6px 2px 8px',gap:2}}>
+                  <div key={cat.name}
+                    style={{marginBottom:'0.15rem',opacity:isCatBeingDragged?0.4:1,
+                      borderTop:isCatDragOver?'2px solid #1b4f72':'2px solid transparent',
+                      transition:'border-color 0.1s'}}
+                    onDragOver={e=>onCatHeaderDragOver(e, catIdx)}
+                    onDrop={e=>onCatHeaderDrop(e, catIdx)}>
+
+                    {/* Category header */}
+                    <div
+                      onDragOver={e=>onCatDragOver(e, cat.name)}
+                      onDrop={e=>onDropOnCategory(e, cat.name)}
+                      style={{display:'flex',alignItems:'center',padding:'5px 6px 2px 8px',gap:2,
+                        background:isCatDropTarget?'#ddeeff':'transparent',
+                        borderRadius:isCatDropTarget?3:0,transition:'background 0.1s'}}>
+                      {/* Category drag handle */}
+                      <span
+                        draggable
+                        onDragStart={e=>onCatHeaderDragStart(e,catIdx)}
+                        onDragEnd={onCatHeaderDragEnd}
+                        title='Drag to reorder category'
+                        style={{color:'#ccc',fontSize:'0.65rem',cursor:'grab',flexShrink:0,padding:'0 2px',userSelect:'none'}}>⠿</span>
                       <button onClick={()=>toggleCat(cat.name)} title={catCollapsed?'Expand':'Collapse'}
                         style={{background:'none',border:'none',cursor:'pointer',color:'#aaa',fontSize:'0.58rem',padding:'0 2px',lineHeight:1,flexShrink:0}}>
                         {catCollapsed?'▶':'▼'}
@@ -715,6 +854,7 @@ export default function WikiApp() {
                       <button onClick={()=>setNewSubInput(newSubInput===catIdx?null:catIdx)} title='Add subcategory'
                         style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.72rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>⊕</button>
                     </div>
+
                     {newSubInput===catIdx && (
                       <div style={{display:'flex',gap:3,padding:'3px 8px 3px 22px'}}>
                         <input autoFocus placeholder='Subcategory name…'
@@ -727,30 +867,26 @@ export default function WikiApp() {
                           style={{padding:'2px 6px',border:'none',borderRadius:3,background:'#1b4f72',color:'#fff',cursor:'pointer',fontSize:'0.72rem'}}>+</button>
                       </div>
                     )}
+
                     {!catCollapsed && (
                       <>
-                        {byCategory[cat.name]?.length===0 && cat.subcategories.length===0 &&
-                          <div style={{fontSize:'0.78rem',color:'#aaa',padding:'2px 12px 2px 22px',fontStyle:'italic'}}>—</div>}
-                        {byCategory[cat.name]?.map(a => {
-                          const isActive = currentId===a.id&&!creating
-                          const editingUsers = Object.values(online).filter(u=>u.articleId===a.id&&u.editing)
-                          return (
-                            <div key={a.id} onClick={()=>navTo(a.id)}
-                              style={{padding:'3px 10px 3px 22px',cursor:'pointer',fontSize:'0.84rem',lineHeight:1.45,display:'flex',alignItems:'center',gap:4,
-                                background:isActive?'#e2dfd8':'transparent',color:isActive?'#1b4f72':'#222',
-                                fontWeight:isActive?600:400,borderLeft:isActive?'3px solid #1b4f72':'3px solid transparent'}}>
-                              <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</span>
-                              {editingUsers.length>0&&<span style={{width:7,height:7,borderRadius:'50%',background:'#f5a623',flexShrink:0}}/>}
-                            </div>
-                          )
-                        })}
+                        {byCategory[cat.name]?.length===0 && cat.subcategories.length===0 && !isCatDropTarget &&
+                          <div style={{fontSize:'0.78rem',color:'#aaa',padding:'2px 12px 2px 28px',fontStyle:'italic'}}>—</div>}
+                        {byCategory[cat.name]?.map(a => renderArticle(a, 28, cat.name))}
+
                         {cat.subcategories.map((sub, subIdx) => {
                           const subKey = cat.name + ' > ' + sub
                           const subCollapsed = !!collapsedCats[subKey]
                           const isEditingSub = editingCat?.type==='sub' && editingCat.catIdx===catIdx && editingCat.subIdx===subIdx
+                          const isSubDropTarget = dragArticle && dragOverCat === subKey
                           return (
                             <div key={subKey}>
-                              <div style={{display:'flex',alignItems:'center',padding:'3px 6px 2px 22px',gap:2}}>
+                              <div
+                                onDragOver={e=>onCatDragOver(e, subKey)}
+                                onDrop={e=>onDropOnCategory(e, subKey)}
+                                style={{display:'flex',alignItems:'center',padding:'3px 6px 2px 22px',gap:2,
+                                  background:isSubDropTarget?'#ddeeff':'transparent',
+                                  borderRadius:isSubDropTarget?3:0,transition:'background 0.1s'}}>
                                 <button onClick={()=>toggleCat(subKey)}
                                   style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.55rem',padding:'0 2px',lineHeight:1,flexShrink:0}}>
                                   {subCollapsed?'▶':'▼'}
@@ -768,21 +904,9 @@ export default function WikiApp() {
                               </div>
                               {!subCollapsed && (
                                 <>
-                                  {byCategory[subKey]?.length===0 &&
+                                  {byCategory[subKey]?.length===0 && !isSubDropTarget &&
                                     <div style={{fontSize:'0.78rem',color:'#aaa',padding:'2px 12px 2px 34px',fontStyle:'italic'}}>—</div>}
-                                  {byCategory[subKey]?.map(a => {
-                                    const isActive = currentId===a.id&&!creating
-                                    const editingUsers = Object.values(online).filter(u=>u.articleId===a.id&&u.editing)
-                                    return (
-                                      <div key={a.id} onClick={()=>navTo(a.id)}
-                                        style={{padding:'3px 10px 3px 34px',cursor:'pointer',fontSize:'0.84rem',lineHeight:1.45,display:'flex',alignItems:'center',gap:4,
-                                          background:isActive?'#e2dfd8':'transparent',color:isActive?'#1b4f72':'#222',
-                                          fontWeight:isActive?600:400,borderLeft:isActive?'3px solid #1b4f72':'3px solid transparent'}}>
-                                        <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</span>
-                                        {editingUsers.length>0&&<span style={{width:7,height:7,borderRadius:'50%',background:'#f5a623',flexShrink:0}}/>}
-                                      </div>
-                                    )
-                                  })}
+                                  {byCategory[subKey]?.map(a => renderArticle(a, 34, subKey))}
                                 </>
                               )}
                             </div>
@@ -830,21 +954,15 @@ export default function WikiApp() {
           )}
           {!creating&&!editing&&!article&&articlesLoaded&&Object.keys(articles).length>0&&(
             <div style={{position:'relative',minHeight:'100%',background:'#000',overflow:'hidden',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start'}}>
-              {/* Starfield — seeded scatter */}
+              {/* Starfield */}
               <div style={{position:'absolute',inset:0,pointerEvents:'none',zIndex:0}}>
                 <svg width='100%' height='100%' style={{position:'absolute',inset:0}}>
-                  {(()=>{
-                    const stars=[]
-                    let s=42
-                    const rnd=()=>{ s=(s*1664525+1013904223)&0xffffffff; return (s>>>0)/0xffffffff }
-                    for(let i=0;i<220;i++){
-                      const x=rnd()*100, y=rnd()*100
-                      const r=rnd()<0.08?1.5:rnd()<0.3?1:0.55
-                      const op=0.25+rnd()*0.7
-                      stars.push(<circle key={i} cx={x+'%'} cy={y+'%'} r={r} fill='#fff' opacity={op}/>)
-                    }
-                    return stars
-                  })()}
+                  {Array.from({length:180}).map((_,i)=>{
+                    const x=((i*137.508)%100), y=((i*97.3)%100)
+                    const r=i%7===0?1.4:i%3===0?1:0.6
+                    const op=0.3+((i*53)%70)/100
+                    return <circle key={i} cx={x+'%'} cy={y+'%'} r={r} fill='#fff' opacity={op}/>
+                  })}
                 </svg>
               </div>
               {/* Planet + moons */}
@@ -869,12 +987,23 @@ export default function WikiApp() {
                     filter:'drop-shadow(0 0 32px rgba(80,180,80,0.25))',
                     animation:'slowspin 120s linear infinite'}}/>
               </div>
+
               <div style={{textAlign:'center',zIndex:1,padding:'0 1rem 2rem'}}>
                 <div style={{fontFamily:"'IM Fell English',serif",fontSize:isMobile?'2.6rem':'3.5rem',color:'#d4eed4',lineHeight:1,marginBottom:'0.35rem',textShadow:'0 0 30px rgba(80,200,80,0.3)'}}>Qærn</div>
                 <div style={{fontSize:'0.68rem',textTransform:'uppercase',letterSpacing:'0.2em',color:'#4a7a4a',marginBottom:'1.5rem'}}>The Living Wiki</div>
-                <p style={{fontFamily:"'IM Fell English',serif",fontSize:'0.95rem',color:'#556655',lineHeight:1.8,fontStyle:'italic',margin:'0 auto',maxWidth:400}}>
-                  "Three stars. Dig to crack the heart. Peace above all else."
+                <p style={{fontFamily:"'IM Fell English',serif",fontSize:'0.95rem',color:'#556655',lineHeight:1.8,fontStyle:'italic',margin:'0 auto 1.8rem',maxWidth:400}}>
+                  "The Wyld does not forget. Neither does the Library."
                 </p>
+                <div style={{display:'flex',flexWrap:'wrap',gap:'0.5rem',justifyContent:'center',maxWidth:500,margin:'0 auto'}}>
+                  {Object.values(articles).slice(0,8).map(a=>(
+                    <button key={a.id} onClick={()=>navTo(a.id)}
+                      style={{padding:'6px 14px',border:'1px solid #2a4a2a',borderRadius:20,
+                        background:'rgba(20,40,20,0.6)',cursor:'pointer',
+                        fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.82rem',color:'#8aba8a'}}>
+                      {a.title}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           )}

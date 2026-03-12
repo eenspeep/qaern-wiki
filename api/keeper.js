@@ -69,7 +69,7 @@ Current date in Qærn: The Age of Wyldgrowth, Year 100.`
       },
       body: JSON.stringify({
         model: 'claude-opus-4-5',
-        max_tokens: 1024,
+        max_tokens: 4096,
         system: systemPrompt,
         messages,
       }),
