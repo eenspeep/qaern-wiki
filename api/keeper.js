@@ -11,11 +11,16 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'API key not configured' })
 
-  // Build a compact wiki snapshot to give Claude context — include IDs explicitly
+  // Build a full wiki snapshot including raw HTML so Claude can learn house style
   const wikiContext = Object.values(articles || {}).map(a => {
     const infoLines = Object.entries(a.infobox || {}).map(([k,v]) => `  ${k}: ${v}`).join('\n')
-    const body = (a.content || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 600)
-    return `=== ${a.title} (${a.category}) [id: ${a.id}] ===\n${a.subtitle ? a.subtitle + '\n' : ''}${infoLines ? infoLines + '\n' : ''}${body}…`
+    return `=== ${a.title} (${a.category}) [id: ${a.id}] ===
+subtitle: ${a.subtitle || '(none)'}
+infobox:
+${infoLines || '  (none)'}
+content (raw HTML):
+${a.content || '(empty)'}
+---`
   }).join('\n\n')
 
   const systemPrompt = `You are Archivist Mnemovex, a senior scribe of the Neverending Library in Melphö — the last great repository of knowledge in Qærn. You speak with dry scholarly wit, quiet melancholy, and great precision. You have survived six sieges. You have seen things.
@@ -28,9 +33,11 @@ Your role is to maintain the Qærn wiki on behalf of the Game Master (speep). Yo
 When proposing a wiki edit, always describe what you plan to do BEFORE doing it, then wait for confirmation.
 When the GM says something like "yes", "do it", "go ahead", "add it", "confirm", or similar — proceed with the edit.
 
-CRITICAL RULE FOR EDITING: Each article in the wiki has an "id" shown in brackets like [id: the-peace-king]. When editing an existing article, you MUST use that exact id value in the wiki_action block. Never re-slugify or guess the id. If you use a wrong id, you will create a duplicate instead of editing the original.
+HOUSE STYLE — CRITICAL: The full raw HTML of every article is provided below. Before writing any content, study how existing articles are structured — their heading levels, paragraph style, use of <strong> for key terms, section organisation, tone, and length. All new or edited content must match this house style precisely. Do not invent new HTML patterns; mirror what you see.
 
-When editing an existing article, you must include ALL fields in the wiki_action — carry over any existing infobox, subtitle, and content that you are not explicitly changing. Never leave fields blank unless the GM asked you to clear them.
+CRITICAL RULE FOR EDITING: Each article has an "id" shown in brackets like [id: the-peace-king]. When editing an existing article, you MUST use that exact id in the wiki_action block. Never re-slugify or guess the id — a wrong id creates a duplicate instead of editing the original.
+
+When editing an existing article, include ALL fields in the wiki_action — carry over any infobox, subtitle, and content you are not explicitly changing. Never blank a field unless the GM asked you to clear it.
 
 To perform a wiki action, output a JSON block at the END of your response (after your prose) in this exact format:
 <wiki_action>
@@ -45,9 +52,9 @@ To perform a wiki action, output a JSON block at the END of your response (after
 }
 </wiki_action>
 
-Only include the <wiki_action> block when you are actually executing a confirmed change. Never include it speculatively.
+Only include the <wiki_action> block when actually executing a confirmed change — never speculatively.
 
-Current wiki contents:
+Current wiki contents (full raw HTML included):
 ${wikiContext || '(The wiki is empty.)'}
 
 Current date in Qærn: The Age of Wyldgrowth, Year 100.`
