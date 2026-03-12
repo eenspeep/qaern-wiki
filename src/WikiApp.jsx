@@ -9,7 +9,23 @@ import { usePresence, uidColor, initials } from './usePresence'
 import { INITIAL_ARTICLES } from './seedData'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const DEFAULT_CATEGORIES = ['Lore & History', 'Peoples', 'Locations', 'Factions']
+// Category tree: each entry is { name: string, subcategories: string[] }
+const DEFAULT_CATEGORIES = [
+  { name: 'Lore & History', subcategories: [] },
+  { name: 'Peoples',        subcategories: [] },
+  { name: 'Locations',      subcategories: [] },
+  { name: 'Factions',       subcategories: [] },
+]
+
+// Flatten tree to all fully-qualified category strings (e.g. 'Peoples > Elves')
+function flattenCategories(cats) {
+  const result = []
+  cats.forEach(c => {
+    result.push(c.name)
+    c.subcategories.forEach(s => result.push(c.name + ' > ' + s))
+  })
+  return result
+}
 const CONTENT_FONTS = [
   { label: 'Source Serif (Default)', value: 'Source Serif 4, Georgia, serif' },
   { label: 'IM Fell English', value: 'IM Fell English, Georgia, serif' },
@@ -441,6 +457,8 @@ export default function WikiApp() {
   const [collapsedCats, setCollapsedCats] = useState({})
   const [newCatInput, setNewCatInput] = useState('')
   const [showNewCatInput, setShowNewCatInput] = useState(false)
+  const [editingCat, setEditingCat] = useState(null)   // { type:'cat'|'sub', catIdx, subIdx?, value }
+  const [newSubInput, setNewSubInput] = useState(null)  // catIdx or null
 
   const online = usePresence(user, currentId, editing)
 
@@ -522,22 +540,85 @@ export default function WikiApp() {
     search==='' || a.title.toLowerCase().includes(search.toLowerCase()) ||
     (a.content||'').replace(/<[^>]*>/g,'').toLowerCase().includes(search.toLowerCase())
   )
-  // Merge in any categories from articles that aren't in our list yet
-  const allCategories = [...categories]
-  Object.values(articles).forEach(a => { if (a.category && !allCategories.includes(a.category)) allCategories.push(a.category) })
-  const byCategory = allCategories.reduce((acc,cat) => {
-    acc[cat] = filtered.filter(a=>a.category===cat); return acc
-  }, {})
+
+  // Build full category tree, merging in any categories from articles not yet in tree
+  const allFlat = flattenCategories(categories)
+  const catTree = [...categories.map(c => ({...c, subcategories:[...c.subcategories]}))]
+  Object.values(articles).forEach(a => {
+    if (!a.category) return
+    if (a.category.includes(' > ')) {
+      const [parent, sub] = a.category.split(' > ')
+      let node = catTree.find(c => c.name === parent)
+      if (!node) { node = { name: parent, subcategories: [] }; catTree.push(node) }
+      if (!node.subcategories.includes(sub)) node.subcategories.push(sub)
+    } else if (!catTree.find(c => c.name === a.category)) {
+      catTree.push({ name: a.category, subcategories: [] })
+    }
+  })
+
+  const byCategory = {}
+  catTree.forEach(c => {
+    byCategory[c.name] = filtered.filter(a => a.category === c.name)
+    c.subcategories.forEach(s => {
+      byCategory[`${c.name} > ${s}`] = filtered.filter(a => a.category === `${c.name} > ${s}`)
+    })
+  })
 
   const addCategory = () => {
     const name = newCatInput.trim()
-    if (!name || categories.includes(name)) return
-    setCategories(c => [...c, name])
+    if (!name || categories.find(c=>c.name===name)) return
+    setCategories(c => [...c, { name, subcategories: [] }])
     setNewCatInput('')
     setShowNewCatInput(false)
   }
-  const toggleCat = cat => setCollapsedCats(p => ({...p, [cat]: !p[cat]}))
+
+  const addSubcategory = (catIdx, subName) => {
+    const name = subName.trim()
+    if (!name) return
+    setCategories(cats => cats.map((c,i) =>
+      i === catIdx && !c.subcategories.includes(name)
+        ? { ...c, subcategories: [...c.subcategories, name] }
+        : c
+    ))
+  }
+
+  const renameCategory = (catIdx, newName) => {
+    const old = categories[catIdx].name
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === old) return
+    // Update articles that use this category
+    Object.values(articles).forEach(async a => {
+      if (a.category === old) {
+        await setDoc(doc(db,'articles',a.id), {...a, category: trimmed}, {merge:true})
+      }
+      if (a.category && a.category.startsWith(old + ' > ')) {
+        const newCat = trimmed + ' > ' + a.category.slice(old.length + 3)
+        await setDoc(doc(db,'articles',a.id), {...a, category: newCat}, {merge:true})
+      }
+    })
+    setCategories(cats => cats.map((c,i) => i === catIdx ? { ...c, name: trimmed } : c))
+  }
+
+  const renameSubcategory = (catIdx, subIdx, newName) => {
+    const parentName = categories[catIdx].name
+    const oldSub = categories[catIdx].subcategories[subIdx]
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === oldSub) return
+    Object.values(articles).forEach(async a => {
+      if (a.category === `${parentName} > ${oldSub}`) {
+        await setDoc(doc(db,'articles',a.id), {...a, category: `${parentName} > ${trimmed}`}, {merge:true})
+      }
+    })
+    setCategories(cats => cats.map((c,i) =>
+      i === catIdx
+        ? { ...c, subcategories: c.subcategories.map((s,si) => si === subIdx ? trimmed : s) }
+        : c
+    ))
+  }
+
+  const toggleCat = key => setCollapsedCats(p => ({...p, [key]: !p[key]}))
   const navTo = id => { setCurrentId(id); setEditing(false); setCreating(false) }
+  const allFlatCategories = flattenCategories(catTree)
 
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f8f7f4',color:'#222'}}>
@@ -564,32 +645,101 @@ export default function WikiApp() {
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
         {/* Sidebar */}
         {sidebarOpen&&(
-          <aside style={{width:220,background:'#f0eeea',borderRight:'1px solid #ccc9c0',overflowY:'auto',padding:'0.6rem 0',flexShrink:0,display:'flex',flexDirection:'column'}}>
+          <aside style={{width:230,background:'#f0eeea',borderRight:'1px solid #ccc9c0',overflowY:'auto',padding:'0.6rem 0',flexShrink:0,display:'flex',flexDirection:'column'}}>
             <div style={{flex:1}}>
-              {allCategories.map(cat=>{
-                const collapsed = !!collapsedCats[cat]
+              {catTree.map((cat, catIdx) => {
+                const catCollapsed = !!collapsedCats[cat.name]
+                const isEditingCatName = editingCat?.type==='cat' && editingCat.catIdx===catIdx
                 return (
-                  <div key={cat} style={{marginBottom:'0.2rem'}}>
-                    <div style={{display:'flex',alignItems:'center',padding:'5px 8px 2px 12px',gap:4}}>
-                      <button onClick={()=>toggleCat(cat)} title={collapsed?'Expand':'Collapse'}
-                        style={{background:'none',border:'none',cursor:'pointer',color:'#aaa',fontSize:'0.6rem',padding:'0 2px',lineHeight:1,flexShrink:0}}>
-                        {collapsed?'▶':'▼'}
+                  <div key={cat.name} style={{marginBottom:'0.15rem'}}>
+                    <div style={{display:'flex',alignItems:'center',padding:'5px 6px 2px 8px',gap:2}}>
+                      <button onClick={()=>toggleCat(cat.name)} title={catCollapsed?'Expand':'Collapse'}
+                        style={{background:'none',border:'none',cursor:'pointer',color:'#aaa',fontSize:'0.58rem',padding:'0 2px',lineHeight:1,flexShrink:0}}>
+                        {catCollapsed?'▶':'▼'}
                       </button>
-                      <span style={{fontSize:'0.63rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#888',fontWeight:700,flex:1}}>{cat}</span>
+                      {isEditingCatName
+                        ? <input autoFocus value={editingCat.value}
+                            onChange={e=>setEditingCat(p=>({...p,value:e.target.value}))}
+                            onBlur={()=>{ renameCategory(catIdx, editingCat.value); setEditingCat(null) }}
+                            onKeyDown={e=>{ if(e.key==='Enter'){renameCategory(catIdx,editingCat.value);setEditingCat(null)} if(e.key==='Escape')setEditingCat(null) }}
+                            style={{flex:1,fontSize:'0.63rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',padding:'1px 4px',border:'1px solid #1b4f72',borderRadius:2,background:'#fff',color:'#222',minWidth:0}}/>
+                        : <span style={{fontSize:'0.63rem',textTransform:'uppercase',letterSpacing:'0.08em',color:'#888',fontWeight:700,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{cat.name}</span>
+                      }
+                      {!isEditingCatName && <button onClick={()=>setEditingCat({type:'cat',catIdx,value:cat.name})} title='Rename category'
+                        style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.6rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>✎</button>}
+                      <button onClick={()=>setNewSubInput(newSubInput===catIdx?null:catIdx)} title='Add subcategory'
+                        style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.72rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>⊕</button>
                     </div>
-                    {!collapsed&&(
+                    {newSubInput===catIdx && (
+                      <div style={{display:'flex',gap:3,padding:'3px 8px 3px 22px'}}>
+                        <input autoFocus placeholder='Subcategory name…'
+                          onKeyDown={e=>{
+                            if(e.key==='Enter'){ addSubcategory(catIdx,e.target.value); setNewSubInput(null) }
+                            if(e.key==='Escape') setNewSubInput(null)
+                          }}
+                          style={{flex:1,padding:'2px 5px',border:'1px solid #ccc9c0',borderRadius:3,fontSize:'0.75rem',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f8f7f4',color:'#222',minWidth:0}}/>
+                        <button onClick={e=>{ const inp=e.target.previousSibling; addSubcategory(catIdx,inp.value); setNewSubInput(null) }}
+                          style={{padding:'2px 6px',border:'none',borderRadius:3,background:'#1b4f72',color:'#fff',cursor:'pointer',fontSize:'0.72rem'}}>+</button>
+                      </div>
+                    )}
+                    {!catCollapsed && (
                       <>
-                        {byCategory[cat].length===0&&<div style={{fontSize:'0.78rem',color:'#aaa',padding:'2px 12px 2px 22px',fontStyle:'italic'}}>—</div>}
-                        {byCategory[cat].map(a=>{
+                        {byCategory[cat.name]?.length===0 && cat.subcategories.length===0 &&
+                          <div style={{fontSize:'0.78rem',color:'#aaa',padding:'2px 12px 2px 22px',fontStyle:'italic'}}>—</div>}
+                        {byCategory[cat.name]?.map(a => {
                           const isActive = currentId===a.id&&!creating
                           const editingUsers = Object.values(online).filter(u=>u.articleId===a.id&&u.editing)
                           return (
                             <div key={a.id} onClick={()=>navTo(a.id)}
-                              style={{padding:'3px 12px 3px 22px',cursor:'pointer',fontSize:'0.85rem',lineHeight:1.45,display:'flex',alignItems:'center',gap:4,
-                                background:isActive?'#e2dfd8':'transparent', color:isActive?'#1b4f72':'#222',
-                                fontWeight:isActive?600:400, borderLeft:isActive?'3px solid #1b4f72':'3px solid transparent'}}>
+                              style={{padding:'3px 10px 3px 22px',cursor:'pointer',fontSize:'0.84rem',lineHeight:1.45,display:'flex',alignItems:'center',gap:4,
+                                background:isActive?'#e2dfd8':'transparent',color:isActive?'#1b4f72':'#222',
+                                fontWeight:isActive?600:400,borderLeft:isActive?'3px solid #1b4f72':'3px solid transparent'}}>
                               <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</span>
-                              {editingUsers.length>0&&<span title={editingUsers.map(u=>u.displayName).join(', ')+' editing'} style={{width:7,height:7,borderRadius:'50%',background:'#f5a623',flexShrink:0}}/>}
+                              {editingUsers.length>0&&<span style={{width:7,height:7,borderRadius:'50%',background:'#f5a623',flexShrink:0}}/>}
+                            </div>
+                          )
+                        })}
+                        {cat.subcategories.map((sub, subIdx) => {
+                          const subKey = cat.name + ' > ' + sub
+                          const subCollapsed = !!collapsedCats[subKey]
+                          const isEditingSub = editingCat?.type==='sub' && editingCat.catIdx===catIdx && editingCat.subIdx===subIdx
+                          return (
+                            <div key={subKey}>
+                              <div style={{display:'flex',alignItems:'center',padding:'3px 6px 2px 22px',gap:2}}>
+                                <button onClick={()=>toggleCat(subKey)}
+                                  style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.55rem',padding:'0 2px',lineHeight:1,flexShrink:0}}>
+                                  {subCollapsed?'▶':'▼'}
+                                </button>
+                                {isEditingSub
+                                  ? <input autoFocus value={editingCat.value}
+                                      onChange={e=>setEditingCat(p=>({...p,value:e.target.value}))}
+                                      onBlur={()=>{ renameSubcategory(catIdx,subIdx,editingCat.value); setEditingCat(null) }}
+                                      onKeyDown={e=>{ if(e.key==='Enter'){renameSubcategory(catIdx,subIdx,editingCat.value);setEditingCat(null)} if(e.key==='Escape')setEditingCat(null) }}
+                                      style={{flex:1,fontSize:'0.6rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.07em',padding:'1px 4px',border:'1px solid #1b4f72',borderRadius:2,background:'#fff',color:'#222',minWidth:0}}/>
+                                  : <span style={{fontSize:'0.6rem',textTransform:'uppercase',letterSpacing:'0.07em',color:'#999',fontWeight:600,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>↳ {sub}</span>
+                                }
+                                {!isEditingSub && <button onClick={()=>setEditingCat({type:'sub',catIdx,subIdx,value:sub})} title='Rename subcategory'
+                                  style={{background:'none',border:'none',cursor:'pointer',color:'#ccc',fontSize:'0.58rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>✎</button>}
+                              </div>
+                              {!subCollapsed && (
+                                <>
+                                  {byCategory[subKey]?.length===0 &&
+                                    <div style={{fontSize:'0.78rem',color:'#aaa',padding:'2px 12px 2px 34px',fontStyle:'italic'}}>—</div>}
+                                  {byCategory[subKey]?.map(a => {
+                                    const isActive = currentId===a.id&&!creating
+                                    const editingUsers = Object.values(online).filter(u=>u.articleId===a.id&&u.editing)
+                                    return (
+                                      <div key={a.id} onClick={()=>navTo(a.id)}
+                                        style={{padding:'3px 10px 3px 34px',cursor:'pointer',fontSize:'0.84rem',lineHeight:1.45,display:'flex',alignItems:'center',gap:4,
+                                          background:isActive?'#e2dfd8':'transparent',color:isActive?'#1b4f72':'#222',
+                                          fontWeight:isActive?600:400,borderLeft:isActive?'3px solid #1b4f72':'3px solid transparent'}}>
+                                        <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</span>
+                                        {editingUsers.length>0&&<span style={{width:7,height:7,borderRadius:'50%',background:'#f5a623',flexShrink:0}}/>}
+                                      </div>
+                                    )
+                                  })}
+                                </>
+                              )}
                             </div>
                           )
                         })}
@@ -599,7 +749,7 @@ export default function WikiApp() {
                 )
               })}
             </div>
-            {/* New category */}
+            {/* New top-level category */}
             <div style={{borderTop:'1px solid #ccc9c0',padding:'6px 8px'}}>
               {showNewCatInput
                 ? <div style={{display:'flex',gap:4}}>
@@ -624,9 +774,9 @@ export default function WikiApp() {
           {articlesLoaded && Object.keys(articles).length===0 && !creating && (
             <SeedButton onSeed={()=>{}}/>
           )}
-          {creating&&<EditForm draft={newArt} setDraft={setNewArt} onSave={saveNew} onCancel={()=>setCreating(false)} isNew categories={allCategories}/>}
+          {creating&&<EditForm draft={newArt} setDraft={setNewArt} onSave={saveNew} onCancel={()=>setCreating(false)} isNew categories={allFlatCategories}/>}
           {!creating&&editing&&editDraft&&(
-            <EditForm draft={editDraft} setDraft={setEditDraft} onSave={saveEdit} onCancel={()=>{setEditing(false);setEditDraft(null)}} onDelete={()=>deleteArticle(editDraft.id)} categories={allCategories}/>
+            <EditForm draft={editDraft} setDraft={setEditDraft} onSave={saveEdit} onCancel={()=>{setEditing(false);setEditDraft(null)}} onDelete={()=>deleteArticle(editDraft.id)} categories={allFlatCategories}/>
           )}
           {!creating&&!editing&&article&&(
             <ArticleView article={article} onlineUsers={online} articles={articles} onNavigate={navTo}
