@@ -7,6 +7,7 @@ import { db } from './firebase'
 import { useAuth } from './AuthContext'
 import { usePresence, uidColor, initials } from './usePresence'
 import { INITIAL_ARTICLES } from './seedData'
+import WikiKeeper from './WikiKeeper'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 // Category tree: each entry is { name: string, subcategories: string[] }
@@ -790,6 +791,12 @@ export default function WikiApp() {
       </div>
 
       {showChangelog&&<ChangelogPanel onClose={()=>setShowChangelog(false)}/>}
+
+      <WikiKeeper
+        articles={articles}
+        user={user}
+        onArticleChanged={id => { setCurrentId(id); setEditing(false); setCreating(false) }}
+      />
     </div>
   )
 }
