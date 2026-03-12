@@ -27,6 +27,18 @@ function flattenCategories(cats) {
   })
   return result
 }
+
+// ─── Mobile detection hook ────────────────────────────────────────────────────
+function useIsMobile(breakpoint = 680) {
+  const [mobile, setMobile] = useState(() => window.innerWidth < breakpoint)
+  useEffect(() => {
+    const handler = () => setMobile(window.innerWidth < breakpoint)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [breakpoint])
+  return mobile
+}
+
 const CONTENT_FONTS = [
   { label: 'Source Serif (Default)', value: 'Source Serif 4, Georgia, serif' },
   { label: 'IM Fell English', value: 'IM Fell English, Georgia, serif' },
