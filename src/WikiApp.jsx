@@ -830,15 +830,21 @@ export default function WikiApp() {
           )}
           {!creating&&!editing&&!article&&articlesLoaded&&Object.keys(articles).length>0&&(
             <div style={{position:'relative',minHeight:'100%',background:'#000',overflow:'hidden',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start'}}>
-              {/* Starfield */}
+              {/* Starfield — seeded scatter */}
               <div style={{position:'absolute',inset:0,pointerEvents:'none',zIndex:0}}>
                 <svg width='100%' height='100%' style={{position:'absolute',inset:0}}>
-                  {Array.from({length:180}).map((_,i)=>{
-                    const x=((i*137.508)%100), y=((i*97.3)%100)
-                    const r=i%7===0?1.4:i%3===0?1:0.6
-                    const op=0.3+((i*53)%70)/100
-                    return <circle key={i} cx={x+'%'} cy={y+'%'} r={r} fill='#fff' opacity={op}/>
-                  })}
+                  {(()=>{
+                    const stars=[]
+                    let s=42
+                    const rnd=()=>{ s=(s*1664525+1013904223)&0xffffffff; return (s>>>0)/0xffffffff }
+                    for(let i=0;i<220;i++){
+                      const x=rnd()*100, y=rnd()*100
+                      const r=rnd()<0.08?1.5:rnd()<0.3?1:0.55
+                      const op=0.25+rnd()*0.7
+                      stars.push(<circle key={i} cx={x+'%'} cy={y+'%'} r={r} fill='#fff' opacity={op}/>)
+                    }
+                    return stars
+                  })()}
                 </svg>
               </div>
               {/* Planet + moons */}
@@ -863,23 +869,12 @@ export default function WikiApp() {
                     filter:'drop-shadow(0 0 32px rgba(80,180,80,0.25))',
                     animation:'slowspin 120s linear infinite'}}/>
               </div>
-
               <div style={{textAlign:'center',zIndex:1,padding:'0 1rem 2rem'}}>
                 <div style={{fontFamily:"'IM Fell English',serif",fontSize:isMobile?'2.6rem':'3.5rem',color:'#d4eed4',lineHeight:1,marginBottom:'0.35rem',textShadow:'0 0 30px rgba(80,200,80,0.3)'}}>Qærn</div>
                 <div style={{fontSize:'0.68rem',textTransform:'uppercase',letterSpacing:'0.2em',color:'#4a7a4a',marginBottom:'1.5rem'}}>The Living Wiki</div>
-                <p style={{fontFamily:"'IM Fell English',serif",fontSize:'0.95rem',color:'#556655',lineHeight:1.8,fontStyle:'italic',margin:'0 auto 1.8rem',maxWidth:400}}>
-                  "The Wyld does not forget. Neither does the Library."
+                <p style={{fontFamily:"'IM Fell English',serif",fontSize:'0.95rem',color:'#556655',lineHeight:1.8,fontStyle:'italic',margin:'0 auto',maxWidth:400}}>
+                  "Three stars. Dig to crack the heart. Peace above all else."
                 </p>
-                <div style={{display:'flex',flexWrap:'wrap',gap:'0.5rem',justifyContent:'center',maxWidth:500,margin:'0 auto'}}>
-                  {Object.values(articles).slice(0,8).map(a=>(
-                    <button key={a.id} onClick={()=>navTo(a.id)}
-                      style={{padding:'6px 14px',border:'1px solid #2a4a2a',borderRadius:20,
-                        background:'rgba(20,40,20,0.6)',cursor:'pointer',
-                        fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.82rem',color:'#8aba8a'}}>
-                      {a.title}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
           )}
