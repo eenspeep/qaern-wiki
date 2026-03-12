@@ -49,6 +49,10 @@ STYLE.textContent = `
   .article-body a { color: #1a5276; }
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-thumb { background: #ccc9c0; border-radius: 3px; }
+  @keyframes orbit1 { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes orbit2 { from{transform:rotate(40deg)} to{transform:rotate(400deg)} }
+  @keyframes orbit3 { from{transform:rotate(220deg)} to{transform:rotate(-140deg)} }
+  @keyframes slowspin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
 `
 document.head.appendChild(STYLE)
 

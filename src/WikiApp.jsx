@@ -851,12 +851,7 @@ export default function WikiApp() {
                     filter:'drop-shadow(0 0 32px rgba(80,180,80,0.25))',
                     animation:'slowspin 120s linear infinite'}}/>
               </div>
-              <style>{`
-                @keyframes orbit1 { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-                @keyframes orbit2 { from{transform:rotate(40deg)} to{transform:rotate(400deg)} }
-                @keyframes orbit3 { from{transform:rotate(220deg)} to{transform:rotate(-140deg)} }
-                @keyframes slowspin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-              `}</style>
+
               <div style={{textAlign:'center',zIndex:1,padding:'0 1rem 2rem'}}>
                 <div style={{fontFamily:"'IM Fell English',serif",fontSize:isMobile?'2.6rem':'3.5rem',color:'#d4eed4',lineHeight:1,marginBottom:'0.35rem',textShadow:'0 0 30px rgba(80,200,80,0.3)'}}>Qærn</div>
                 <div style={{fontSize:'0.68rem',textTransform:'uppercase',letterSpacing:'0.2em',color:'#4a7a4a',marginBottom:'1.5rem'}}>The Living Wiki</div>
