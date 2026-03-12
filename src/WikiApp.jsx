@@ -954,15 +954,21 @@ export default function WikiApp() {
           )}
           {!creating&&!editing&&!article&&articlesLoaded&&Object.keys(articles).length>0&&(
             <div style={{position:'relative',minHeight:'100%',background:'#000',overflow:'hidden',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start'}}>
-              {/* Starfield */}
+              {/* Starfield — seeded LCG scatter */}
               <div style={{position:'absolute',inset:0,pointerEvents:'none',zIndex:0}}>
                 <svg width='100%' height='100%' style={{position:'absolute',inset:0}}>
-                  {Array.from({length:180}).map((_,i)=>{
-                    const x=((i*137.508)%100), y=((i*97.3)%100)
-                    const r=i%7===0?1.4:i%3===0?1:0.6
-                    const op=0.3+((i*53)%70)/100
-                    return <circle key={i} cx={x+'%'} cy={y+'%'} r={r} fill='#fff' opacity={op}/>
-                  })}
+                  {(()=>{
+                    const stars=[]
+                    let s=42
+                    const rnd=()=>{ s=(s*1664525+1013904223)&0xffffffff; return (s>>>0)/0xffffffff }
+                    for(let i=0;i<220;i++){
+                      const x=rnd()*100, y=rnd()*100
+                      const r=rnd()<0.08?1.5:rnd()<0.3?1:0.55
+                      const op=0.25+rnd()*0.7
+                      stars.push(<circle key={i} cx={x+'%'} cy={y+'%'} r={r} fill='#fff' opacity={op}/>)
+                    }
+                    return stars
+                  })()}
                 </svg>
               </div>
               {/* Planet + moons */}
