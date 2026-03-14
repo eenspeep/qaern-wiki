@@ -7,7 +7,7 @@ const ADMIN = 'speep'
 const isAdmin = user => user?.displayName === ADMIN
 
 const NOTE_TYPES = {
-  quest:   { label: 'Quest',   color: '#c8a86b', bg: '#fdf3dc', pin: '#c0392b' },
+  adventure: { label: 'Adventure', color: '#c8a86b', bg: '#fdf3dc', pin: '#c0392b' },
   rumour:  { label: 'Rumour',  color: '#7a9e7e', bg: '#eef6ee', pin: '#27ae60' },
   bounty:  { label: 'Bounty',  color: '#c06a3a', bg: '#fdeede', pin: '#e67e22' },
   notice:  { label: 'Notice',  color: '#7a7a9e', bg: '#eeeefc', pin: '#8e44ad' },
@@ -93,7 +93,7 @@ function NoteCard({ note, admin, onEdit, onDelete, onDragStart, isDragging }) {
         <div style={{
           fontSize: '0.72rem', color: '#4a3a28', lineHeight: 1.55,
           fontFamily: "'Source Serif 4', Georgia, serif",
-          maxHeight: expanded ? 'none' : '4.65em',
+          maxHeight: expanded ? 'none' : '3.1em',
           overflow: 'hidden',
           cursor: 'pointer',
         }}
@@ -101,10 +101,18 @@ function NoteCard({ note, admin, onEdit, onDelete, onDragStart, isDragging }) {
           {note.body}
         </div>
       )}
-      {note.body && note.body.length > 120 && (
+      {note.body && note.body.length > 80 && (
         <div onClick={e => { e.stopPropagation(); setExpanded(e => !e) }}
-          style={{ fontSize: '0.65rem', color: type.color, marginTop: 3, cursor: 'pointer', opacity: 0.8 }}>
+          style={{ fontSize: '0.65rem', color: type.color, marginTop: 2, cursor: 'pointer', opacity: 0.8 }}>
           {expanded ? '▲ less' : '▼ more'}
+        </div>
+      )}
+      {note.type === 'adventure' && (note.rewards || note.level || note.length) && (
+        <div style={{ marginTop: 7, paddingTop: 6, borderTop: '1px solid rgba(0,0,0,0.08)', fontSize: '0.67rem',
+          color: '#5a4a30', fontFamily: "'Source Serif 4', Georgia, serif", lineHeight: 1.6 }}>
+          {note.rewards && <div><span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6rem', opacity: 0.7 }}>Rewards </span>{note.rewards}</div>}
+          {note.level && <div><span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6rem', opacity: 0.7 }}>Level </span>{note.level}</div>}
+          {note.length && <div><span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6rem', opacity: 0.7 }}>Length </span>{note.length}</div>}
         </div>
       )}
 
@@ -124,7 +132,7 @@ function NoteCard({ note, admin, onEdit, onDelete, onDragStart, isDragging }) {
 }
 
 function NoteEditor({ note, onSave, onCancel }) {
-  const [draft, setDraft] = useState(note || { type: 'quest', title: '', body: '' })
+  const [draft, setDraft] = useState(note || { type: 'adventure', title: '', body: '', rewards: '', level: '', length: '' })
   const inp = { width: '100%', padding: '6px 8px', border: '1px solid #ccc9c0', borderRadius: 3,
     fontSize: '0.85rem', fontFamily: "'Source Serif 4', Georgia, serif",
     background: '#faf8f4', color: '#222', boxSizing: 'border-box', marginBottom: 8 }
@@ -155,9 +163,27 @@ function NoteEditor({ note, onSave, onCancel }) {
           placeholder='e.g. Missing Merchant on the Spine Road'/>
 
         <label style={lb}>Body</label>
-        <textarea style={{ ...inp, minHeight: 100, resize: 'vertical', lineHeight: 1.6 }}
+        <textarea style={{ ...inp, minHeight: 80, resize: 'vertical', lineHeight: 1.6 }}
           value={draft.body} onChange={e => setDraft(d => ({ ...d, body: e.target.value }))}
-          placeholder='Details, rewards, contacts…'/>
+          placeholder='Details, contacts, background…'/>
+
+        {draft.type === 'adventure' && (<>
+          <label style={lb}>Possible Rewards</label>
+          <input style={inp} value={draft.rewards||''} onChange={e => setDraft(d => ({ ...d, rewards: e.target.value }))}
+            placeholder='e.g. 200gp, rare components, favour of the Amber Ceremony'/>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 10px' }}>
+            <div>
+              <label style={lb}>Level Recommendation</label>
+              <input style={inp} value={draft.level||''} onChange={e => setDraft(d => ({ ...d, level: e.target.value }))}
+                placeholder='e.g. 3–5'/>
+            </div>
+            <div>
+              <label style={lb}>Length</label>
+              <input style={inp} value={draft.length||''} onChange={e => setDraft(d => ({ ...d, length: e.target.value }))}
+                placeholder='e.g. One session'/>
+            </div>
+          </div>
+        </>)}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
           <button onClick={onCancel}
