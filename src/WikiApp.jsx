@@ -325,27 +325,8 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
   const linkedContent = linkifyContent(article.content||'', articles||{}, article.id, onNavigate)
   const [lightbox, setLightbox] = useState(false)
   const [lightboxIdx, setLightboxIdx] = useState(0)
-  const [infoboxH, setInfoboxH] = useState(null)
   const isMobile = useIsMobile()
-  const infoboxWidth = 244 - 22  // infobox width minus padding
 
-  // Preload all portrait images, find the tallest natural height, lock infobox to that
-  useEffect(() => {
-    if (portraitUrls.length <= 1) return
-    let maxH = 0
-    let loaded = 0
-    portraitUrls.forEach(url => {
-      const img = new Image()
-      img.onload = () => {
-        const h = Math.round((img.naturalHeight / img.naturalWidth) * infoboxWidth)
-        if (h > maxH) maxH = h
-        loaded++
-        if (loaded === portraitUrls.length && maxH > 0) setInfoboxH(maxH)
-      }
-      img.onerror = () => { loaded++; if (loaded === portraitUrls.length && maxH > 0) setInfoboxH(maxH) }
-      img.src = url
-    })
-  }, [portraitUrls.join(',')])
 
 
   // Close lightbox on Escape
@@ -362,7 +343,7 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
   }
 
   return (
-    <div style={{maxWidth:780}}>
+    <div style={{maxWidth:780,position:'relative'}}>
       {/* Lightbox */}
       {lightbox && (
         <div onClick={()=>setLightbox(false)}
@@ -396,11 +377,11 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
       {hasInfo&&(
         <div style={isMobile
           ? {width:'100%',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
-          : {float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
+          : {position:'absolute',right:0,top:0,width:244,background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
         }>
           <div style={{fontFamily:"'IM Fell English',serif",fontWeight:600,fontSize:'0.88rem',marginBottom:6,borderBottom:'1px solid #ccc9c0',paddingBottom:4,color:'#1b4f72'}}>{article.title}</div>
           {/* Portrait */}
-          <div style={{textAlign:'center',marginBottom:8,minHeight:infoboxH?infoboxH+'px':undefined}}>
+          <div style={{textAlign:'center',marginBottom:8}}>
             {portraitUrls.length > 0
               ? <PortraitSlideshow urls={portraitUrls} alt={article.title}
                   onIndexChange={i=>setLightboxIdx(i)}
@@ -419,8 +400,7 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
           ))}
         </div>
       )}
-      <div className='article-body' style={{fontSize:'0.91rem'}} onClick={handleBodyClick} dangerouslySetInnerHTML={{__html:linkedContent}}/>
-      <div style={{clear:'both'}}/>
+      <div className='article-body' style={{fontSize:'0.91rem',marginRight:hasInfo&&!isMobile?'268px':0}} onClick={handleBodyClick} dangerouslySetInnerHTML={{__html:linkedContent}}/>
       {article.updatedAt&&(
         <div style={{marginTop:'1.5rem',paddingTop:'0.75rem',borderTop:'1px solid #e8e5e0',fontSize:'0.76rem',color:'#aaa'}}>
           Last edited {new Date(article.updatedAt.seconds*1000).toLocaleString()} {article.updatedBy&&`by ${article.updatedBy}`}
