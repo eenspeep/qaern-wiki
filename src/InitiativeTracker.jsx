@@ -264,7 +264,7 @@ function MonsterGroupCard({ group, admin, phase, onUpdate, onRemove, onEndTurn }
 function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn }) {
   const canEdit = admin || user?.displayName === player.name
   const isMe = user?.displayName === player.name
-  const canEndTurn = phase === 'players' && !player.turnTaken && canEdit
+  const canEndTurn = phase === 'players' && !player.turnTaken && !player.dead && canEdit
   const upd = p => onUpdate({ ...player, ...p })
 
   return (
@@ -362,19 +362,24 @@ export default function InitiativeTracker({ user, onClose }) {
   const allMonstersDone = monsterGroups.every(g=>g.turnTaken)
 
   const playerEndTurn = (playerId) => {
-    // Mark this player's turn as taken, refresh their non-triggered actions
+    // Mark this player done, refresh their non-triggered actions, then switch to monsters
     const newPlayers = players.map(p =>
       p.id === playerId
         ? { ...p, turnTaken: true, main: false, maneuver: false, move: false }
         : p
     )
-    const allDone = newPlayers.filter(p=>!p.dead).every(p=>p.turnTaken)
-    if (allDone) {
-      // Switch to monsters — reset all monster group turns
-      const newGroups = monsterGroups.map(g => ({ ...g, turnTaken: false }))
-      update({ ...state, phase: 'monsters', players: newPlayers, monsterGroups: newGroups })
+    // Check if all players are done after this
+    const allDone = newPlayers.filter(p => !p.dead).every(p => p.turnTaken)
+    if (allDone && monsterGroups.every(g => g.turnTaken)) {
+      // Everyone done — new round
+      const newRoundPlayers = newPlayers.map(p => ({
+        ...p, turnTaken: false, triggered: false, main: false, maneuver: false, move: false
+      }))
+      const resetGroups = monsterGroups.map(g => ({ ...g, turnTaken: false }))
+      update({ ...state, round: round + 1, phase: 'players', players: newRoundPlayers, monsterGroups: resetGroups })
     } else {
-      update({ ...state, players: newPlayers })
+      // Switch to monsters
+      update({ ...state, phase: 'monsters', players: newPlayers })
     }
   }
 
@@ -382,17 +387,19 @@ export default function InitiativeTracker({ user, onClose }) {
     const newGroups = monsterGroups.map(g =>
       g.id === groupId ? { ...g, turnTaken: true } : g
     )
-    const allDone = newGroups.every(g => g.turnTaken)
-    if (allDone) {
-      // New round — switch to players, reset all turns, refresh triggered actions too
-      const newPlayers = players.map(p => ({
-        ...p, turnTaken: false,
-        triggered: false, main: false, maneuver: false, move: false
+    // Check if all players and monsters are done
+    const allPlayersDone = players.filter(p => !p.dead).every(p => p.turnTaken)
+    const allMonstersDone = newGroups.every(g => g.turnTaken)
+    if (allPlayersDone && allMonstersDone) {
+      // Everyone done — new round
+      const newRoundPlayers = players.map(p => ({
+        ...p, turnTaken: false, triggered: false, main: false, maneuver: false, move: false
       }))
       const resetGroups = newGroups.map(g => ({ ...g, turnTaken: false }))
-      update({ ...state, round: round + 1, phase: 'players', players: newPlayers, monsterGroups: resetGroups })
+      update({ ...state, round: round + 1, phase: 'players', players: newRoundPlayers, monsterGroups: resetGroups })
     } else {
-      update({ ...state, monsterGroups: newGroups })
+      // Switch to players
+      update({ ...state, phase: 'players', monsterGroups: newGroups })
     }
   }
 
