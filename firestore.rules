@@ -27,6 +27,11 @@ service cloud.firestore {
       allow write: if request.auth != null && request.auth.token.name == 'speep';
     }
 
+    // Adventures log: all authenticated users can read and write
+    match /bulletin/adventures {
+      allow read, write: if request.auth != null;
+    }
+
     // Initiative tracker: all authenticated users can read and write
     match /initiative/{docId} {
       allow read, write: if request.auth != null;
