@@ -1,3 +1,4 @@
+import Adventures from './Adventures'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from './firebase'
@@ -323,6 +324,7 @@ function NoteEditor({ note, onSave, onCancel }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function BulletinBoard({ user, onClose }) {
   const admin = isAdmin(user)
+  const [mainTab, setMainTab] = useState('notices')  // 'notices' | 'adventures'
   const [notes, setNotes] = useState([])
   const [loaded, setLoaded] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -421,55 +423,69 @@ export default function BulletinBoard({ user, onClose }) {
           fontSize: '0.82rem', fontFamily: "'Source Serif 4', Georgia, serif" }}>← Back</button>
       </div>
 
-      <div ref={boardRef} style={{
-        flex: 1, position: 'relative', overflow: 'hidden',
-        background: '#c4924a',
-        backgroundImage: `
-          radial-gradient(ellipse at 20% 30%, rgba(180,120,40,0.4) 0%, transparent 60%),
-          radial-gradient(ellipse at 80% 70%, rgba(140,80,20,0.3) 0%, transparent 50%),
-          radial-gradient(ellipse at 50% 50%, rgba(200,150,80,0.2) 0%, transparent 70%),
-          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23c4924a'/%3E%3Ccircle cx='1' cy='1' r='0.5' fill='rgba(0,0,0,0.07)'/%3E%3Ccircle cx='3' cy='3' r='0.4' fill='rgba(0,0,0,0.05)'/%3E%3C/svg%3E")
-        `,
-      }}>
-        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
-          boxShadow: 'inset 0 0 60px rgba(0,0,0,0.35)' }}/>
-
-        {!loaded && (
-          <div style={{ color: '#8a6a3a', fontSize: '0.9rem', fontStyle: 'italic',
-            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }}>
-            Reading the board…
-          </div>
-        )}
-        {loaded && notes.length === 0 && (
-          <div style={{ color: '#8a6a3a', fontSize: '0.9rem', fontStyle: 'italic',
-            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-            textAlign: 'center', pointerEvents: 'none' }}>
-            {admin ? 'The board is empty. Post a notice to get started.' : 'No notices posted yet.'}
-          </div>
-        )}
-
-        {notes.map(note => (
-          <NoteCard
-            key={note.id}
-            note={note}
-            admin={admin}
-            user={user}
-            isDragging={dragging?.id === note.id}
-            onDragStart={(e) => onNoteMouseDown(e, note)}
-            onEdit={() => setEditing(note)}
-            onDelete={() => deleteNote(note.id)}
-            onRsvpChange={(newRsvps) => updateRsvp(note.id, newRsvps)}
-          />
+      {/* Tab bar */}
+      <div style={{ background: '#231a0e', borderBottom: '1px solid #5a3e1e',
+        display: 'flex', padding: '0 1.5rem', gap: 2, flexShrink: 0 }}>
+        {[['notices','📌 Notices'],['adventures','⚔ Adventures']].map(([id, label]) => (
+          <button key={id} onClick={() => setMainTab(id)}
+            style={{ padding: '8px 16px 6px', border: 'none', background: 'none', cursor: 'pointer',
+              fontFamily: "'IM Fell English', serif", fontSize: '0.88rem',
+              color: mainTab === id ? '#c8a86b' : '#6a5a4a',
+              borderBottom: mainTab === id ? '2px solid #c8a86b' : '2px solid transparent',
+              transition: 'color 0.15s' }}>
+            {label}
+          </button>
         ))}
       </div>
 
-      {editing && (
-        <NoteEditor
-          note={editing === 'new' ? null : editing}
-          onSave={saveNote}
-          onCancel={() => setEditing(null)}
-        />
+      {/* Adventures tab */}
+      {mainTab === 'adventures' && (
+        <div style={{ flex: 1, overflow: 'hidden', background: '#fdf8f0', display: 'flex', flexDirection: 'column' }}>
+          <Adventures user={user}/>
+        </div>
       )}
+
+      {/* Notices corkboard */}
+      {mainTab === 'notices' && <>
+        <div ref={boardRef} style={{
+          flex: 1, position: 'relative', overflow: 'hidden',
+          background: '#c4924a',
+          backgroundImage: `
+            radial-gradient(ellipse at 20% 30%, rgba(180,120,40,0.4) 0%, transparent 60%),
+            radial-gradient(ellipse at 80% 70%, rgba(140,80,20,0.3) 0%, transparent 50%),
+            radial-gradient(ellipse at 50% 50%, rgba(200,150,80,0.2) 0%, transparent 70%),
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23c4924a'/%3E%3Ccircle cx='1' cy='1' r='0.5' fill='rgba(0,0,0,0.07)'/%3E%3Ccircle cx='3' cy='3' r='0.4' fill='rgba(0,0,0,0.05)'/%3E%3C/svg%3E")
+          `,
+        }}>
+          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
+            boxShadow: 'inset 0 0 60px rgba(0,0,0,0.35)' }}/>
+          {!loaded && (
+            <div style={{ color: '#8a6a3a', fontSize: '0.9rem', fontStyle: 'italic',
+              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }}>
+              Reading the board…
+            </div>
+          )}
+          {loaded && notes.length === 0 && (
+            <div style={{ color: '#8a6a3a', fontSize: '0.9rem', fontStyle: 'italic',
+              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+              textAlign: 'center', pointerEvents: 'none' }}>
+              {admin ? 'The board is empty. Post a notice to get started.' : 'No notices posted yet.'}
+            </div>
+          )}
+          {notes.map(note => (
+            <NoteCard key={note.id} note={note} admin={admin} user={user}
+              isDragging={dragging?.id === note.id}
+              onDragStart={(e) => onNoteMouseDown(e, note)}
+              onEdit={() => setEditing(note)}
+              onDelete={() => deleteNote(note.id)}
+              onRsvpChange={(newRsvps) => updateRsvp(note.id, newRsvps)}/>
+          ))}
+        </div>
+        {editing && (
+          <NoteEditor note={editing === 'new' ? null : editing}
+            onSave={saveNote} onCancel={() => setEditing(null)}/>
+        )}
+      </>}
     </div>
   )
 }
