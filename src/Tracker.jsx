@@ -233,12 +233,12 @@ function TrackerClock({ item, editable, onChange, onDelete }) {
 function LevelTooltip({ levels, currentLevel, palette, mousePos }) {
   const pal = makePaletteFor(palette)
   // Position fixed relative to mouse, flipping above if near bottom
-  const top = mousePos ? mousePos.y : 100
-  const left = mousePos ? Math.min(window.innerWidth - 340, mousePos.x) : 100
+  const top = mousePos ? mousePos.y : 0
+  const left = mousePos ? Math.min(window.innerWidth - 340, mousePos.x) : 0
   return (
     <div style={{
       position: 'fixed', top, left, zIndex: 9999,
-      transform: 'translateY(-100%)',
+      transform: 'translate(8px, calc(-100% - 8px))',
       background: '#1a1a1a', color: '#e8e4dc', borderRadius: 6,
       padding: '10px 14px', minWidth: 220, maxWidth: 320,
       boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
@@ -279,6 +279,13 @@ function TrackerLevel({ item, editable, onChange, onDelete }) {
   const [draft, setDraft] = useState(null)
   const [hovered, setHovered] = useState(false)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
+
+  // Track mouse globally so position is always accurate
+  useEffect(() => {
+    const handler = e => setMousePos({ x: e.clientX, y: e.clientY })
+    if (hovered) document.addEventListener('mousemove', handler)
+    return () => document.removeEventListener('mousemove', handler)
+  }, [hovered])
 
   const currentLevel = item.currentLevel ?? 0
   const levels = item.levels ?? [{ label: '', max: 100, current: 0, description: '' }]
@@ -385,8 +392,7 @@ function TrackerLevel({ item, editable, onChange, onDelete }) {
         {/* Title + level badge + tooltip trigger */}
         <div style={{ display: 'inline-block' }}
           onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-          onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}>
+          onMouseLeave={() => setHovered(false)}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4, cursor: 'help' }}>
             <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '0.92rem', color: '#222', fontWeight: 600 }}>{item.label}</span>
             <span style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
@@ -396,7 +402,7 @@ function TrackerLevel({ item, editable, onChange, onDelete }) {
             <span style={{ fontSize: '0.68rem', color: '#aaa' }}>ⓘ</span>
           </div>
           {hovered && levels.some(l => l.description) && (
-            <LevelTooltip levels={levels} currentLevel={currentLevel} palette={item.palette}/>
+            <LevelTooltip levels={levels} currentLevel={currentLevel} palette={item.palette} mousePos={mousePos}/>
           )}
         </div>
 
