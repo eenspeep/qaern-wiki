@@ -8,6 +8,7 @@ import { useAuth } from './AuthContext'
 import { usePresence, uidColor, initials } from './usePresence'
 import { INITIAL_ARTICLES } from './seedData'
 import WikiKeeper from './WikiKeeper'
+import Tracker from './Tracker'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 // Category tree: each entry is { name: string, subcategories: string[] }
@@ -543,6 +544,7 @@ export default function WikiApp() {
   const [newArt, setNewArt] = useState({ title:'',category:'Lore & History',subtitle:'',content:'',infobox:{} })
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 680)
   const [showChangelog, setShowChangelog] = useState(false)
+  const [showTracker, setShowTracker] = useState(false)
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   const [collapsedCats, setCollapsedCats] = useState({})
   const [newCatInput, setNewCatInput] = useState('')
@@ -814,6 +816,10 @@ export default function WikiApp() {
         {!isMobile && (
           <button onClick={()=>setShowChangelog(s=>!s)}
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📋 Changelog</button>
+        )}
+        {!isMobile && (
+          <button onClick={()=>setShowTracker(true)}
+            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📊 Tracker</button>
         )}
         {!isMobile && (
           <button onClick={()=>{setCreating(true);setEditing(false)}}
@@ -1088,6 +1094,11 @@ export default function WikiApp() {
             <span style={{fontSize:'1.1rem'}}>📋</span>
             <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Changelog</span>
           </button>
+          <button onClick={()=>setShowTracker(true)}
+            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,borderRight:'1px solid #e8e5e0'}}>
+            <span style={{fontSize:'1.1rem'}}>📊</span>
+            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Tracker</span>
+          </button>
           <button onClick={()=>{setCreating(true);setEditing(false);setSidebarOpen(false)}}
             style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#1b4f72',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
             <span style={{fontSize:'1.1rem'}}>✍</span>
@@ -1100,6 +1111,8 @@ export default function WikiApp() {
           </button>
         </div>
       )}
+
+      {showTracker && <Tracker user={user} onClose={()=>setShowTracker(false)}/> }
 
       <WikiKeeper
         articles={articles}
