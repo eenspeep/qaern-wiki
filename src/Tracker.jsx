@@ -233,8 +233,8 @@ function TrackerClock({ item, editable, onChange, onDelete }) {
 function LevelTooltip({ levels, currentLevel, palette, mousePos }) {
   const pal = makePaletteFor(palette)
   // Position fixed relative to mouse, flipping above if near bottom
-  const top = mousePos ? Math.max(8, mousePos.y - 12) : 100
-  const left = mousePos ? Math.min(window.innerWidth - 340, Math.max(8, mousePos.x - 20)) : 100
+  const top = mousePos ? mousePos.y : 100
+  const left = mousePos ? Math.min(window.innerWidth - 340, mousePos.x) : 100
   return (
     <div style={{
       position: 'fixed', top, left, zIndex: 9999,
