@@ -232,53 +232,52 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
   const DISPLAY_MS = 4000
   const FADE_MS    = 800
 
-  const [cur, setCur]         = useState(0)   // fully visible photo
-  const [next, setNext]       = useState(null) // photo fading in
+  const [curIdx, setCurIdx]   = useState(0)
+  const [nextIdx, setNextIdx] = useState(null)
   const [fading, setFading]   = useState(false)
   const [containerH, setContainerH] = useState(null)
-  const imgRefs = useRef([])
+  const imgRefs   = useRef({})
+  const activeRef = useRef(true)
 
-  const measureH = (img) => {
-    if (!img || !img.naturalWidth) return null
-    const w = img.parentElement?.offsetWidth || 220
-    return Math.round((img.naturalHeight / img.naturalWidth) * w)
+  const measureH = (el) => {
+    if (!el || !el.naturalWidth) return null
+    const w = el.parentElement?.offsetWidth || 220
+    return Math.round((el.naturalHeight / el.naturalWidth) * w)
+  }
+
+  const setH = (idx) => {
+    const el = imgRefs.current[idx]
+    if (el) {
+      const h = measureH(el)
+      if (h) setContainerH(h)
+    }
   }
 
   useEffect(() => {
     if (urls.length <= 1) return
-    let cancelled = false
+    activeRef.current = true
 
-    const cycle = async (from) => {
-      // Wait DISPLAY_MS with current photo fully visible
+    const run = async (from) => {
       await new Promise(r => setTimeout(r, DISPLAY_MS))
-      if (cancelled) return
-
+      if (!activeRef.current) return
       const to = (from + 1) % urls.length
-      setNext(to)
+      setNextIdx(to)
+      // Tiny tick to let React render the next image at opacity:0 before transition starts
+      await new Promise(r => setTimeout(r, 20))
+      if (!activeRef.current) return
       setFading(true)
-
-      // Wait for fade to complete
       await new Promise(r => setTimeout(r, FADE_MS))
-      if (cancelled) return
-
-      // Commit — cur becomes to, reset fade state
-      setCur(to)
-      setNext(null)
+      if (!activeRef.current) return
+      setH(to)
+      setCurIdx(to)
+      setNextIdx(null)
       setFading(false)
-
-      // Update container height to new image
-      const img = imgRefs.current[to]
-      if (img) {
-        const h = measureH(img)
-        if (h) setContainerH(h)
-      }
-
-      cycle(to)
+      run(to)
     }
 
-    cycle(0)
-    return () => { cancelled = true }
-  }, [urls.length])
+    run(0)
+    return () => { activeRef.current = false }
+  }, [urls.join(',')])
 
   if (urls.length === 1) {
     return (
@@ -295,25 +294,32 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
       transition: `height ${FADE_MS}ms ease-in-out`,
       background:'#d8d4cc',
     }}>
-      {urls.map((url, i) => {
-        const isCur  = i === cur  && next === null
-        const isFadeOut = i === cur  && fading
-        const isFadeIn  = i === next && fading
-        const visible = isCur || isFadeOut || isFadeIn
-        if (!visible) return <img key={i} ref={el => imgRefs.current[i] = el} src={url} alt={alt}
-          style={{position:'absolute',top:0,left:0,width:'100%',height:'auto',opacity:0,pointerEvents:'none'}}
-          onLoad={e => { if (i === 0) { const h = measureH(e.target); if (h) setContainerH(h) } }}/>
-        return (
-          <img key={i} ref={el => imgRefs.current[i] = el} src={url} alt={alt}
-            onLoad={e => { if (i === 0) { const h = measureH(e.target); if (h) setContainerH(h) } }}
-            style={{
-              position: i === cur && !fading ? 'relative' : 'absolute',
-              top:0, left:0, width:'100%', height:'auto', display:'block',
-              opacity: isFadeOut ? 0 : isFadeIn ? 1 : 1,
-              transition: (isFadeOut || isFadeIn) ? `opacity ${FADE_MS}ms ease-in-out` : 'none',
-            }}/>
-        )
-      })}
+      {/* Current photo — always on bottom (z:1), fades out when fading=true */}
+      <img
+        ref={el => imgRefs.current[curIdx] = el}
+        src={urls[curIdx]} alt={alt}
+        onLoad={e => { if (curIdx === 0 && !containerH) setH(curIdx) }}
+        style={{
+          position:'absolute', inset:0, width:'100%', height:'auto',
+          zIndex:1,
+          opacity: fading ? 0 : 1,
+          transition: fading ? `opacity ${FADE_MS}ms ease-in-out` : 'none',
+        }}/>
+      {/* Next photo — on top (z:2), fades in when fading=true */}
+      {nextIdx !== null && (
+        <img
+          ref={el => imgRefs.current[nextIdx] = el}
+          src={urls[nextIdx]} alt={alt}
+          style={{
+            position:'absolute', inset:0, width:'100%', height:'auto',
+            zIndex:2,
+            opacity: fading ? 1 : 0,
+            transition: fading ? `opacity ${FADE_MS}ms ease-in-out` : 'none',
+          }}/>
+      )}
+      {/* Spacer to hold container height before JS measures */}
+      <img src={urls[curIdx]} alt='' aria-hidden='true'
+        style={{width:'100%',height:'auto',visibility:'hidden',display:'block'}}/>
     </div>
   )
 }
