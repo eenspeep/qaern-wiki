@@ -228,7 +228,7 @@ function linkifyContent(html, articles, currentId, onNavigate) {
 }
 
 // ─── Portrait Slideshow ───────────────────────────────────────────────────────
-function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
+function PortraitSlideshow({ urls, alt, onOpenLightbox, onIndexChange, onHeightChange }) {
   const DISPLAY_MS = 4000
   const FADE_MS    = 800
 
@@ -268,9 +268,10 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
       setNextIdx(null)
       setCurOpacity(1)
       setNextOpacity(0)
+      if (onIndexChange) onIndexChange(to)
       if (nextRef.current) {
         const h = measureH(nextRef.current)
-        if (h) setContainerH(h)
+        if (h) { setContainerH(h); if (onHeightChange) onHeightChange(h) }
       }
       run(to)
     }
@@ -282,7 +283,7 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
   if (urls.length === 1) {
     return (
       <img src={urls[0]} alt={alt} onClick={onOpenLightbox}
-        onLoad={e => { const h = measureH(e.target); if (h) setContainerH(h) }}
+        onLoad={e => { const h = measureH(e.target); if (h) { setContainerH(h); if (onHeightChange) onHeightChange(h) } }}
         style={{width:'100%',height:'auto',display:'block',borderRadius:3,border:'1px solid #ccc9c0',cursor:'zoom-in'}}/>
     )
   }
@@ -296,7 +297,7 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
       background:'#d8d4cc',
     }}>
       <img ref={curRef} src={urls[curIdx]} alt={alt}
-        onLoad={e => { const h = measureH(e.target); if (h && curIdx === 0) setContainerH(h) }}
+        onLoad={e => { const h = measureH(e.target); if (h && curIdx === 0) { setContainerH(h); if (onHeightChange) onHeightChange(h) } }}
         style={{
           position:'absolute', top:0, left:0, width:'100%', height:'auto',
           opacity: curOpacity,
@@ -324,6 +325,7 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
   const linkedContent = linkifyContent(article.content||'', articles||{}, article.id, onNavigate)
   const [lightbox, setLightbox] = useState(false)
   const [lightboxIdx, setLightboxIdx] = useState(0)
+  const [infoboxMinH, setInfoboxMinH] = useState(0)  // locked to largest portrait height seen
   const isMobile = useIsMobile()
 
   // Close lightbox on Escape
@@ -374,14 +376,16 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
       {hasInfo&&(
         <div style={isMobile
           ? {width:'100%',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
-          : {float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
+          : {float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem',minHeight:infoboxMinH?infoboxMinH+'px':undefined}
         }>
           <div style={{fontFamily:"'IM Fell English',serif",fontWeight:600,fontSize:'0.88rem',marginBottom:6,borderBottom:'1px solid #ccc9c0',paddingBottom:4,color:'#1b4f72'}}>{article.title}</div>
           {/* Portrait */}
           <div style={{textAlign:'center',marginBottom:8}}>
             {portraitUrls.length > 0
               ? <PortraitSlideshow urls={portraitUrls} alt={article.title}
-                  onOpenLightbox={()=>{setLightboxIdx(0);setLightbox(true)}}/>
+                  onIndexChange={i=>setLightboxIdx(i)}
+                  onHeightChange={h=>setInfoboxMinH(prev=>Math.max(prev,h))}
+                  onOpenLightbox={()=>setLightbox(true)}/>
               : <div style={{width:'100%',height:160,background:'#d8d4cc',borderRadius:3,border:'1px solid #ccc9c0',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:4}}>
                   <span style={{fontSize:'2.8rem',color:'#a09890',lineHeight:1}}>?</span>
                   <span style={{fontSize:'0.68rem',color:'#a09890',letterSpacing:'0.05em'}}>No portrait</span>
