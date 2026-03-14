@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, onSnapshot, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from './firebase'
 
 const INIT_DOC = 'initiative/state'
@@ -247,14 +247,25 @@ export default function InitiativeTracker({ user, onClose }) {
   const [newPlayerName, setNewPlayerName] = useState('')
   const [newGroupName, setNewGroupName] = useState('')
   const writing = useRef(false)
+  const unsubRef = useRef(null)
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, INIT_DOC), snap => {
-      if (writing.current) return
-      setState(snap.exists() ? snap.data() : BLANK_STATE)
-      setLoaded(true)
-    }, err => { console.error('Initiative error:', err); setLoaded(true) })
-    return unsub
+    // Pre-create the document if it doesn't exist, then subscribe
+    const ref = doc(db, INIT_DOC)
+    getDoc(ref).then(snap => {
+      if (!snap.exists()) {
+        return setDoc(ref, { ...BLANK_STATE, updatedAt: serverTimestamp() })
+      }
+    }).catch(() => {}).finally(() => {
+      const unsub = onSnapshot(ref, snap => {
+        if (writing.current) return
+        setState(snap.exists() ? snap.data() : BLANK_STATE)
+        setLoaded(true)
+      }, err => { console.error('Initiative error:', err); setState(BLANK_STATE); setLoaded(true) })
+      // Store unsub for cleanup — use a ref since we're inside a promise
+      unsubRef.current = unsub
+    })
+    return () => { if (unsubRef.current) unsubRef.current() }
   }, [])
 
   const persist = async (s) => {
