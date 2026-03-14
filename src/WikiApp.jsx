@@ -565,10 +565,11 @@ export default function WikiApp() {
   const isMobile = useIsMobile()
   const online = usePresence(user, currentId, editing)
 
-  // Read initial article ID from URL hash (e.g. #the-wyld)
+  // Read initial URL hash — #bulletin opens bulletin, otherwise treat as article id
   useEffect(() => {
     const hash = window.location.hash.slice(1)
-    if (hash) setCurrentId(hash)
+    if (hash === 'bulletin') setShowBulletin(true)
+    else if (hash) setCurrentId(hash)
   }, [])
 
   // Keep URL hash in sync with current article; clear it on landing page
@@ -826,7 +827,7 @@ export default function WikiApp() {
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📊 Tracker</button>
         )}
         {!isMobile && (
-          <button onClick={()=>setShowBulletin(true)}
+          <button onClick={()=>{ setShowBulletin(true); history.replaceState(null,'','#bulletin') }}
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📋 Bulletin</button>
         )}
         {!isMobile && (
@@ -1111,7 +1112,7 @@ export default function WikiApp() {
             <span style={{fontSize:'1.1rem'}}>📊</span>
             <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Tracker</span>
           </button>
-          <button onClick={()=>setShowBulletin(true)}
+          <button onClick={()=>{ setShowBulletin(true); history.replaceState(null,'','#bulletin') }}
             style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,borderRight:'1px solid #e8e5e0'}}>
             <span style={{fontSize:'1.1rem'}}>📌</span>
             <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Bulletin</span>
@@ -1135,7 +1136,7 @@ export default function WikiApp() {
       )}
 
       {showTracker && <Tracker user={user} onClose={()=>setShowTracker(false)}/> }
-      {showBulletin && <BulletinBoard user={user} onClose={()=>setShowBulletin(false)}/>}
+      {showBulletin && <BulletinBoard user={user} onClose={()=>{ setShowBulletin(false); history.replaceState(null,'',window.location.pathname) }}/>}
       {showInitiative && <InitiativeTracker user={user} onClose={()=>setShowInitiative(false)}/>}
 
       <WikiKeeper
