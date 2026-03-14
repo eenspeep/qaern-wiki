@@ -227,7 +227,100 @@ function linkifyContent(html, articles, currentId, onNavigate) {
   return result
 }
 
-function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavigate }) {
+// ─── Portrait Slideshow ───────────────────────────────────────────────────────
+// JS-driven crossfade: outgoing fades out while incoming fades in, never coexist.
+// Container height transitions smoothly to match each image's natural aspect ratio.
+function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
+  const DISPLAY_MS = 4000   // how long each photo is fully visible
+  const FADE_MS    = 800    // crossfade duration
+
+  const [cur, setCur] = useState(0)
+  const [next, setNext] = useState(null)   // index being faded in
+  const [phase, setPhase] = useState('idle') // 'idle' | 'crossfading'
+  const [containerH, setContainerH] = useState(null)
+  const curImgRef  = useRef(null)
+  const nextImgRef = useRef(null)
+  const timerRef   = useRef(null)
+
+  // Measure image natural height relative to infobox width (244px minus padding)
+  const measureH = (img) => {
+    if (!img || !img.naturalWidth) return null
+    const w = img.parentElement?.offsetWidth || 220
+    return Math.round((img.naturalHeight / img.naturalWidth) * w)
+  }
+
+  const startCrossfade = (fromIdx, toIdx) => {
+    setNext(toIdx)
+    setPhase('crossfading')
+    // After fade completes, commit
+    timerRef.current = setTimeout(() => {
+      setCur(toIdx)
+      setNext(null)
+      setPhase('idle')
+      if (nextImgRef.current) {
+        const h = measureH(nextImgRef.current)
+        if (h) setContainerH(h)
+      }
+    }, FADE_MS)
+  }
+
+  // Set initial height once first image loads
+  const onFirstLoad = (e) => {
+    const h = measureH(e.target)
+    if (h) setContainerH(h)
+  }
+
+  // Cycle timer
+  useEffect(() => {
+    if (urls.length <= 1) return
+    const id = setInterval(() => {
+      setCur(c => {
+        const toIdx = (c + 1) % urls.length
+        startCrossfade(c, toIdx)
+        return c  // don't change cur yet — startCrossfade will after fade
+      })
+    }, DISPLAY_MS + FADE_MS)
+    return () => { clearInterval(id); clearTimeout(timerRef.current) }
+  }, [urls.length])
+
+  if (urls.length === 1) {
+    return (
+      <img src={urls[0]} alt={alt} onClick={onOpenLightbox}
+        style={{width:'100%',height:'auto',display:'block',borderRadius:3,border:'1px solid #ccc9c0',cursor:'zoom-in'}}/>
+    )
+  }
+
+  return (
+    <div onClick={onOpenLightbox} style={{
+      position:'relative', width:'100%', cursor:'zoom-in',
+      borderRadius:3, border:'1px solid #ccc9c0', overflow:'hidden',
+      height: containerH ? containerH + 'px' : 'auto',
+      transition: `height ${FADE_MS}ms ease-in-out`,
+      background:'#d8d4cc',
+    }}>
+      {/* Current image — fades out during crossfade */}
+      <img ref={curImgRef} src={urls[cur]} alt={alt} onLoad={onFirstLoad}
+        style={{
+          position:'absolute', top:0, left:0, width:'100%', height:'auto',
+          display:'block',
+          opacity: phase === 'crossfading' ? 0 : 1,
+          transition: phase === 'crossfading' ? `opacity ${FADE_MS}ms ease-in-out` : 'none',
+        }}/>
+      {/* Next image — fades in during crossfade */}
+      {next !== null && (
+        <img ref={nextImgRef} src={urls[next]} alt={alt}
+          style={{
+            position:'absolute', top:0, left:0, width:'100%', height:'auto',
+            display:'block',
+            opacity: phase === 'crossfading' ? 1 : 0,
+            transition: `opacity ${FADE_MS}ms ease-in-out`,
+          }}/>
+      )}
+    </div>
+  )
+}
+
+
   // Parse portrait field — supports comma-separated URLs for multi-portrait slideshow
   const portraitUrls = (() => {
     const raw = article.portrait || ''
@@ -296,23 +389,10 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
           {/* Portrait — single or multi-portrait crossfade */}
           <div style={{textAlign:'center',marginBottom:8}}>
             {portraitUrls.length > 0
-              ? <div style={{position:'relative',width:'100%',cursor:'zoom-in',borderRadius:3,border:'1px solid #ccc9c0',overflow:'hidden',lineHeight:0}}
-                  onClick={()=>{ setLightboxIdx(0); setLightbox(true) }}>
-                  {portraitUrls.length === 1
-                    ? <img src={portraitUrls[0]} alt={article.title}
-                        style={{width:'100%',height:'auto',display:'block'}}/>
-                    : portraitUrls.map((url, i) => (
-                        <img key={url+i} src={url} alt={article.title}
-                          style={{
-                            width:'100%',height:'auto',display:'block',
-                            position: i===0 ? 'relative' : 'absolute',
-                            top:0,left:0,
-                            animation: `portraitFadeIn ${portraitUrls.length * 4}s ease-in-out ${i * 4}s infinite`,
-                            opacity: 0,
-                          }}/>
-                      ))
-                  }
-                </div>
+              ? <PortraitSlideshow
+                  urls={portraitUrls}
+                  alt={article.title}
+                  onOpenLightbox={()=>{ setLightboxIdx(0); setLightbox(true) }}/>
               : <div style={{width:'100%',height:160,background:'#d8d4cc',borderRadius:3,border:'1px solid #ccc9c0',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:4}}>
                   <span style={{fontSize:'2.8rem',color:'#a09890',lineHeight:1}}>?</span>
                   <span style={{fontSize:'0.68rem',color:'#a09890',letterSpacing:'0.05em'}}>No portrait</span>
