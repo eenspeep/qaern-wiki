@@ -8,7 +8,6 @@ import { useAuth } from './AuthContext'
 import { usePresence, uidColor, initials } from './usePresence'
 import { INITIAL_ARTICLES } from './seedData'
 import WikiKeeper from './WikiKeeper'
-import Tracker from './Tracker'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 // Category tree: each entry is { name: string, subcategories: string[] }
@@ -229,11 +228,18 @@ function linkifyContent(html, articles, currentId, onNavigate) {
 }
 
 function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavigate }) {
-  const hasInfo = (article.infobox && Object.keys(article.infobox).length > 0) || article.portrait
+  // Parse portrait field — supports comma-separated URLs for multi-portrait slideshow
+  const portraitUrls = (() => {
+    const raw = article.portrait || ''
+    const urls = raw.split(',').map(s => s.trim()).filter(Boolean)
+    return urls
+  })()
+  const hasInfo = (article.infobox && Object.keys(article.infobox).length > 0) || portraitUrls.length > 0
   const readers = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&!u.editing)
   const editors = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&u.editing)
   const linkedContent = linkifyContent(article.content||'', articles||{}, article.id, onNavigate)
   const [lightbox, setLightbox] = useState(false)
+  const [lightboxIdx, setLightboxIdx] = useState(0)
   const isMobile = useIsMobile()
 
   // Close lightbox on Escape
@@ -256,7 +262,7 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
         <div onClick={()=>setLightbox(false)}
           style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',cursor:'zoom-out'}}>
           <div onClick={e=>e.stopPropagation()} style={{position:'relative',maxWidth:'90vw',maxHeight:'90vh',display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
-            <img src={article.portrait} alt={article.title}
+            <img src={portraitUrls[lightboxIdx] || portraitUrls[0]} alt={article.title}
               style={{maxWidth:'90vw',maxHeight:'82vh',objectFit:'contain',borderRadius:4,boxShadow:'0 8px 48px rgba(0,0,0,0.6)'}}/>
             <div style={{color:'#ccc',fontSize:'0.82rem',fontStyle:'italic',fontFamily:"'Source Serif 4',Georgia,serif"}}>{article.title}</div>
             <button onClick={()=>setLightbox(false)}
@@ -287,11 +293,26 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
           : {float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
         }>
           <div style={{fontFamily:"'IM Fell English',serif",fontWeight:600,fontSize:'0.88rem',marginBottom:6,borderBottom:'1px solid #ccc9c0',paddingBottom:4,color:'#1b4f72'}}>{article.title}</div>
-          {/* Portrait */}
+          {/* Portrait — single or multi-portrait crossfade */}
           <div style={{textAlign:'center',marginBottom:8}}>
-            {article.portrait
-              ? <img src={article.portrait} alt={article.title} onClick={()=>setLightbox(true)}
-                  style={{width:'100%',height:'auto',borderRadius:3,border:'1px solid #ccc9c0',display:'block',cursor:'zoom-in'}}/>
+            {portraitUrls.length > 0
+              ? <div style={{position:'relative',width:'100%',cursor:'zoom-in',borderRadius:3,border:'1px solid #ccc9c0',overflow:'hidden',lineHeight:0}}
+                  onClick={()=>{ setLightboxIdx(0); setLightbox(true) }}>
+                  {portraitUrls.length === 1
+                    ? <img src={portraitUrls[0]} alt={article.title}
+                        style={{width:'100%',height:'auto',display:'block'}}/>
+                    : portraitUrls.map((url, i) => (
+                        <img key={url+i} src={url} alt={article.title}
+                          style={{
+                            width:'100%',height:'auto',display:'block',
+                            position: i===0 ? 'relative' : 'absolute',
+                            top:0,left:0,
+                            animation: `portraitFadeIn ${portraitUrls.length * 4}s ease-in-out ${i * 4}s infinite`,
+                            opacity: 0,
+                          }}/>
+                      ))
+                  }
+                </div>
               : <div style={{width:'100%',height:160,background:'#d8d4cc',borderRadius:3,border:'1px solid #ccc9c0',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:4}}>
                   <span style={{fontSize:'2.8rem',color:'#a09890',lineHeight:1}}>?</span>
                   <span style={{fontSize:'0.68rem',color:'#a09890',letterSpacing:'0.05em'}}>No portrait</span>
@@ -389,14 +410,21 @@ function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categori
             <input style={inp} value={draft.subtitle||''} onChange={e=>setDraft(p=>({...p,subtitle:e.target.value}))} placeholder='e.g. Mythic Treasure of Dwarvenkind'/>
             <label style={{...lb,marginTop:14}}>Infobox</label>
             <div style={{marginBottom:8}}>
-              <label style={lb}>Portrait Image URL</label>
+              <label style={lb}>Portrait Image URL(s)</label>
+              <div style={{fontSize:'0.72rem',color:'#aaa',marginBottom:4}}>Separate multiple URLs with commas for a crossfade slideshow.</div>
               <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
-                <input style={{...inp,marginBottom:0,flex:1}} value={draft.portrait||''} onChange={e=>setDraft(p=>({...p,portrait:e.target.value}))} placeholder='https://… (leave blank for grey placeholder)'/>
-                <div style={{width:56,height:56,flexShrink:0,borderRadius:3,border:'1px solid #ccc9c0',overflow:'hidden',background:'#d8d4cc',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                  {draft.portrait
-                    ? <img src={draft.portrait} alt='' style={{width:'100%',height:'100%',objectFit:'cover'}}/>
-                    : <span style={{fontSize:'1.5rem',color:'#a09890'}}>?</span>
-                  }
+                <input style={{...inp,marginBottom:0,flex:1}} value={draft.portrait||''} onChange={e=>setDraft(p=>({...p,portrait:e.target.value}))} placeholder='https://… or url1, url2, url3'/>
+                <div style={{display:'flex',gap:4,flexShrink:0}}>
+                  {(draft.portrait||'').split(',').map(s=>s.trim()).filter(Boolean).slice(0,3).map((url,i)=>(
+                    <div key={i} style={{width:44,height:44,borderRadius:3,border:'1px solid #ccc9c0',overflow:'hidden',background:'#d8d4cc',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                      <img src={url} alt='' style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                    </div>
+                  ))}
+                  {!(draft.portrait||'').trim() && (
+                    <div style={{width:44,height:44,borderRadius:3,border:'1px solid #ccc9c0',background:'#d8d4cc',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      <span style={{fontSize:'1.2rem',color:'#a09890'}}>?</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -472,7 +500,6 @@ export default function WikiApp() {
   const [newArt, setNewArt] = useState({ title:'',category:'Lore & History',subtitle:'',content:'',infobox:{} })
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 680)
   const [showChangelog, setShowChangelog] = useState(false)
-  const [showTracker, setShowTracker] = useState(false)
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   const [collapsedCats, setCollapsedCats] = useState({})
   const [newCatInput, setNewCatInput] = useState('')
@@ -744,10 +771,6 @@ export default function WikiApp() {
         {!isMobile && (
           <button onClick={()=>setShowChangelog(s=>!s)}
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📋 Changelog</button>
-        )}
-        {!isMobile && (
-          <button onClick={()=>setShowTracker(true)}
-            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📊 Tracker</button>
         )}
         {!isMobile && (
           <button onClick={()=>{setCreating(true);setEditing(false)}}
@@ -1022,11 +1045,6 @@ export default function WikiApp() {
             <span style={{fontSize:'1.1rem'}}>📋</span>
             <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Changelog</span>
           </button>
-          <button onClick={()=>setShowTracker(true)}
-            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,borderRight:'1px solid #e8e5e0'}}>
-            <span style={{fontSize:'1.1rem'}}>📊</span>
-            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Tracker</span>
-          </button>
           <button onClick={()=>{setCreating(true);setEditing(false);setSidebarOpen(false)}}
             style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#1b4f72',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
             <span style={{fontSize:'1.1rem'}}>✍</span>
@@ -1039,8 +1057,6 @@ export default function WikiApp() {
           </button>
         </div>
       )}
-
-      {showTracker && <Tracker user={user} onClose={()=>setShowTracker(false)}/>}
 
       <WikiKeeper
         articles={articles}

@@ -53,6 +53,8 @@ STYLE.textContent = `
   @keyframes orbit2 { from{transform:rotate(40deg)} to{transform:rotate(400deg)} }
   @keyframes orbit3 { from{transform:rotate(220deg)} to{transform:rotate(-140deg)} }
   @keyframes slowspin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  @keyframes portraitFadeIn { 0%{opacity:0} 15%{opacity:1} 85%{opacity:1} 100%{opacity:0} }
+  @keyframes portraitFadeInOnly { from{opacity:0} to{opacity:1} }
 `
 document.head.appendChild(STYLE)
 
