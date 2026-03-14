@@ -488,8 +488,17 @@ export default function Tracker({ user, onClose }) {
     if (addingTab) setTimeout(() => newTabRef.current?.focus(), 40)
   }, [addingTab])
 
+  const writing = useRef(false)
+
   const persist = async (newState) => {
-    await setDoc(doc(db, TRACKER_DOC), { ...newState, updatedAt: serverTimestamp() })
+    writing.current = true
+    try {
+      // Strip undefined values before saving
+      const clean = JSON.parse(JSON.stringify(newState))
+      await setDoc(doc(db, TRACKER_DOC), { ...clean, updatedAt: serverTimestamp() })
+    } finally {
+      writing.current = false
+    }
   }
   const update = (newState) => { setState(newState); persist(newState) }
 
@@ -511,6 +520,7 @@ export default function Tracker({ user, onClose }) {
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, TRACKER_DOC), snap => {
+      if (writing.current) return  // Don't overwrite local state during a save
       if (snap.exists()) {
         const raw = snap.data()
         const data = migrate(raw)
