@@ -229,90 +229,62 @@ function linkifyContent(html, articles, currentId, onNavigate) {
 
 // ─── Portrait Slideshow ───────────────────────────────────────────────────────
 function PortraitSlideshow({ urls, alt, onOpenLightbox, onIndexChange }) {
-  const DISPLAY_MS = 4000
-  const FADE_MS    = 800
+  const FADE_MS = 300
+  const [curIdx, setCurIdx]   = useState(0)
+  const [prevIdx, setPrevIdx] = useState(null)
+  const [fading, setFading]   = useState(false)
+  const alive = useRef(true)
 
-  const [curIdx, setCurIdx]     = useState(0)
-  const [nextIdx, setNextIdx]   = useState(null)
-  const [curOpacity, setCurOpacity]   = useState(1)
-  const [nextOpacity, setNextOpacity] = useState(0)
-  const [containerH, setContainerH]   = useState(null)
-  const curRef  = useRef(null)
-  const nextRef = useRef(null)
-  const alive   = useRef(true)
+  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
 
-  const measureH = (el) => {
-    if (!el?.naturalWidth) return null
-    const w = el.parentElement?.offsetWidth || 220
-    return Math.round((el.naturalHeight / el.naturalWidth) * w)
+  const goTo = async (to) => {
+    if (fading || to === curIdx) return
+    setPrevIdx(curIdx)
+    setFading(true)
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    if (!alive.current) return
+    setCurIdx(to)
+    if (onIndexChange) onIndexChange(to)
+    await new Promise(r => setTimeout(r, FADE_MS))
+    if (!alive.current) return
+    setPrevIdx(null)
+    setFading(false)
   }
 
-  useEffect(() => {
-    alive.current = true
-    if (urls.length <= 1) return
-
-    const run = async (from) => {
-      await new Promise(r => setTimeout(r, DISPLAY_MS))
-      if (!alive.current) return
-      const to = (from + 1) % urls.length
-      setNextIdx(to)
-      setCurOpacity(1)
-      setNextOpacity(0)
-      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-      if (!alive.current) return
-      setCurOpacity(0)
-      setNextOpacity(1)
-      await new Promise(r => setTimeout(r, FADE_MS))
-      if (!alive.current) return
-      setCurIdx(to)
-      setNextIdx(null)
-      setCurOpacity(1)
-      setNextOpacity(0)
-      if (onIndexChange) onIndexChange(to)
-      if (nextRef.current) {
-        const h = measureH(nextRef.current)
-        if (h) setContainerH(h)
-      }
-      run(to)
-    }
-
-    run(0)
-    return () => { alive.current = false }
-  }, [urls.join(',')])
+  const prev = (e) => { e.stopPropagation(); goTo((curIdx - 1 + urls.length) % urls.length) }
+  const next = (e) => { e.stopPropagation(); goTo((curIdx + 1) % urls.length) }
 
   if (urls.length === 1) {
     return (
       <img src={urls[0]} alt={alt} onClick={onOpenLightbox}
-        onLoad={e => { const h = measureH(e.target); if (h) setContainerH(h) }}
         style={{width:'100%',height:'auto',display:'block',borderRadius:3,border:'1px solid #ccc9c0',cursor:'zoom-in'}}/>
     )
   }
 
   return (
-    <div onClick={onOpenLightbox} style={{
-      position:'relative', width:'100%', cursor:'zoom-in',
-      borderRadius:3, border:'1px solid #ccc9c0', overflow:'hidden',
-      height: containerH ? containerH + 'px' : 'auto',
-      transition: `height ${FADE_MS}ms ease-in-out`,
-      background:'#d8d4cc',
-    }}>
-      <img ref={curRef} src={urls[curIdx]} alt={alt}
-        onLoad={e => { const h = measureH(e.target); if (h && curIdx === 0) setContainerH(h) }}
-        style={{
-          position:'absolute', top:0, left:0, width:'100%', height:'auto',
-          opacity: curOpacity,
-          transition: nextIdx !== null ? `opacity ${FADE_MS}ms ease-in-out` : 'none',
-        }}/>
-      {nextIdx !== null && (
-        <img ref={nextRef} src={urls[nextIdx]} alt={alt}
-          style={{
-            position:'absolute', top:0, left:0, width:'100%', height:'auto',
-            opacity: nextOpacity,
-            transition: `opacity ${FADE_MS}ms ease-in-out`,
-          }}/>
+    <div style={{position:'relative',width:'100%',borderRadius:3,border:'1px solid #ccc9c0',overflow:'hidden',background:'#d8d4cc'}}>
+      {/* Outgoing image — fades out */}
+      {prevIdx !== null && (
+        <img src={urls[prevIdx]} alt={alt}
+          style={{position:'absolute',top:0,left:0,width:'100%',height:'auto',
+            opacity: fading ? 0 : 1,
+            transition:`opacity ${FADE_MS}ms ease-in-out`}}/>
       )}
-      <img src={urls[curIdx]} alt='' aria-hidden='true'
-        style={{width:'100%',height:'auto',display:'block',visibility:'hidden'}}/>
+      {/* Current image — fades in */}
+      <img src={urls[curIdx]} alt={alt} onClick={onOpenLightbox}
+        style={{width:'100%',height:'auto',display:'block',cursor:'zoom-in',
+          opacity: fading ? 1 : 1,
+          transition:`opacity ${FADE_MS}ms ease-in-out`}}/>
+      {/* Nav controls */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',
+        padding:'3px 6px',background:'rgba(0,0,0,0.35)',
+        fontSize:'0.68rem',color:'#fff',fontFamily:"'Source Serif 4',Georgia,serif"}}>
+        <button onClick={prev}
+          style={{background:'none',border:'none',cursor:'pointer',color:'#fff',fontSize:'0.8rem',padding:'0 4px',lineHeight:1,opacity:0.85}}>‹</button>
+        <span style={{opacity:0.8,letterSpacing:'0.04em'}}>{curIdx+1} / {urls.length}</span>
+        <button onClick={next}
+          style={{background:'none',border:'none',cursor:'pointer',color:'#fff',fontSize:'0.8rem',padding:'0 4px',lineHeight:1,opacity:0.85}}>›</button>
+      </div>
     </div>
   )
 }
@@ -326,8 +298,6 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
   const [lightbox, setLightbox] = useState(false)
   const [lightboxIdx, setLightboxIdx] = useState(0)
   const isMobile = useIsMobile()
-
-
 
   // Close lightbox on Escape
   useEffect(() => {
@@ -343,7 +313,7 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
   }
 
   return (
-    <div style={{maxWidth:780,position:'relative'}}>
+    <div style={{maxWidth:780}}>
       {/* Lightbox */}
       {lightbox && (
         <div onClick={()=>setLightbox(false)}
@@ -377,7 +347,7 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
       {hasInfo&&(
         <div style={isMobile
           ? {width:'100%',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
-          : {position:'absolute',right:0,top:0,width:244,background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
+          : {float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
         }>
           <div style={{fontFamily:"'IM Fell English',serif",fontWeight:600,fontSize:'0.88rem',marginBottom:6,borderBottom:'1px solid #ccc9c0',paddingBottom:4,color:'#1b4f72'}}>{article.title}</div>
           {/* Portrait */}
@@ -400,7 +370,8 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
           ))}
         </div>
       )}
-      <div className='article-body' style={{fontSize:'0.91rem',marginRight:hasInfo&&!isMobile?'268px':0}} onClick={handleBodyClick} dangerouslySetInnerHTML={{__html:linkedContent}}/>
+      <div className='article-body' style={{fontSize:'0.91rem'}} onClick={handleBodyClick} dangerouslySetInnerHTML={{__html:linkedContent}}/>
+      <div style={{clear:'both'}}/>
       {article.updatedAt&&(
         <div style={{marginTop:'1.5rem',paddingTop:'0.75rem',borderTop:'1px solid #e8e5e0',fontSize:'0.76rem',color:'#aaa'}}>
           Last edited {new Date(article.updatedAt.seconds*1000).toLocaleString()} {article.updatedBy&&`by ${article.updatedBy}`}
