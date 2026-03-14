@@ -233,12 +233,12 @@ function TrackerClock({ item, editable, onChange, onDelete }) {
 function LevelTooltip({ levels, currentLevel, palette, mousePos }) {
   const pal = makePaletteFor(palette)
   // Position fixed relative to mouse, flipping above if near bottom
-  const top = mousePos ? mousePos.y - 8 : 0
-  const left = mousePos ? mousePos.x : 0
+  const top = mousePos ? Math.max(8, mousePos.y - 12) : 100
+  const left = mousePos ? Math.min(window.innerWidth - 340, Math.max(8, mousePos.x - 20)) : 100
   return (
     <div style={{
       position: 'fixed', top, left, zIndex: 9999,
-      transform: 'translate(-20px, -100%)',
+      transform: 'translateY(-100%)',
       background: '#1a1a1a', color: '#e8e4dc', borderRadius: 6,
       padding: '10px 14px', minWidth: 220, maxWidth: 320,
       boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
@@ -452,10 +452,23 @@ const btnDanger = { padding: '5px 10px', border: '1px solid #e0b0b0', borderRadi
 // ─── Main Tracker Page ─────────────────────────────────────────────────────────
 export default function Tracker({ user, onClose }) {
   const admin = isAdmin(user)
-  const [state, setState] = useState(null)   // { tabs: [{id, name, items:[]}] }
+  const [state, setState] = useState(null)
   const [activeTab, setActiveTab] = useState(null)
+  const [loaded, setLoaded] = useState(false)
+  const [addingTab, setAddingTab] = useState(false)
+  const [newTabName, setNewTabName] = useState('')
+  const [editingTabName, setEditingTabName] = useState(null)
+  const [editingTabNameVal, setEditingTabNameVal] = useState('')
+  // Group state
+  const [collapsedGroups, setCollapsedGroups] = useState({})
+  const [editingGroupName, setEditingGroupName] = useState(null) // groupId
+  const [editingGroupNameVal, setEditingGroupNameVal] = useState('')
+  // Drag state
+  const [dragId, setDragId] = useState(null)
+  const [dragOverId, setDragOverId] = useState(null)
+  const [dragOverGroup, setDragOverGroup] = useState(null)
+  const newTabRef = useRef(null)
 
-  // Sync active tab with URL hash (#tracker-tabname)
   const setActiveTabWithHash = (tabId, tabs) => {
     setActiveTab(tabId)
     const tab = (tabs || state?.tabs || []).find(t => t.id === tabId)
@@ -464,30 +477,46 @@ export default function Tracker({ user, onClose }) {
       history.replaceState(null, '', '#' + slug)
     }
   }
-  const [loaded, setLoaded] = useState(false)
-  const [addingTab, setAddingTab] = useState(false)
-  const [newTabName, setNewTabName] = useState('')
-  const [editingTabName, setEditingTabName] = useState(null) // tab id
-  const [editingTabNameVal, setEditingTabNameVal] = useState('')
-  const newTabRef = useRef(null)
 
-  // Real-time Firestore sync
+  useEffect(() => {
+    if (addingTab) setTimeout(() => newTabRef.current?.focus(), 40)
+  }, [addingTab])
+
+  const persist = async (newState) => {
+    await setDoc(doc(db, TRACKER_DOC), { ...newState, updatedAt: serverTimestamp() })
+  }
+  const update = (newState) => { setState(newState); persist(newState) }
+
+  // Migrate old flat items[] to groups structure
+  const migrate = (data) => {
+    if (!data.tabs) return data
+    return {
+      ...data,
+      tabs: data.tabs.map(tab => {
+        if (tab.groups) return tab
+        return {
+          ...tab,
+          groups: [{ id: uid(), name: 'General', items: tab.items || [] }],
+          items: undefined,
+        }
+      })
+    }
+  }
+
   useEffect(() => {
     const unsub = onSnapshot(doc(db, TRACKER_DOC), snap => {
       if (snap.exists()) {
-        const data = snap.data()
+        const raw = snap.data()
+        const data = migrate(raw)
         setState(data)
         setActiveTab(prev => {
           if (prev) return prev
-          // Try to restore from hash
           const hash = window.location.hash.replace('#tracker-', '')
           const byHash = data.tabs?.find(t =>
             t.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') === hash
           )
           const chosen = byHash?.id || data.tabs?.[0]?.id || null
-          if (chosen && byHash) {
-            // hash matched, keep hash as-is
-          } else if (chosen && data.tabs?.[0]) {
+          if (chosen && data.tabs?.[0] && !byHash) {
             const slug = 'tracker-' + data.tabs[0].name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')
             history.replaceState(null, '', '#' + slug)
           }
@@ -496,8 +525,8 @@ export default function Tracker({ user, onClose }) {
       } else {
         const initial = {
           tabs: [
-            { id: uid(), name: 'Melphö', items: [] },
-            { id: uid(), name: 'Attitan', items: [] },
+            { id: uid(), name: 'Melphö', groups: [{ id: uid(), name: 'General', items: [] }] },
+            { id: uid(), name: 'Attitan', groups: [{ id: uid(), name: 'General', items: [] }] },
           ]
         }
         setState(initial)
@@ -513,117 +542,131 @@ export default function Tracker({ user, onClose }) {
     return unsub
   }, [])
 
-  useEffect(() => {
-    if (addingTab) setTimeout(() => newTabRef.current?.focus(), 40)
-  }, [addingTab])
-
-  const [dragId, setDragId] = useState(null)
-  const [dragOverId, setDragOverId] = useState(null)
-
-  const persist = async (newState) => {
-    await setDoc(doc(db, TRACKER_DOC), { ...newState, updatedAt: serverTimestamp() })
-  }
-
-  const update = (newState) => {
-    setState(newState)
-    persist(newState)
-  }
-
-  const updateItems = (tabId, newItems) => {
-    const newState = { ...state, tabs: state.tabs.map(t => t.id === tabId ? { ...t, items: newItems } : t) }
+  const updateTab = (tabId, fn) => {
+    const newState = { ...state, tabs: state.tabs.map(t => t.id === tabId ? fn(t) : t) }
     update(newState)
   }
-
-  const onItemDragStart = (e, itemId) => {
-    setDragId(itemId)
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', itemId)
-  }
-
-  const onItemDragOver = (e, itemId) => {
-    e.preventDefault()
-    if (itemId !== dragId) setDragOverId(itemId)
-  }
-
-  const onItemDrop = (e, targetId) => {
-    e.preventDefault()
-    if (!dragId || dragId === targetId) { setDragId(null); setDragOverId(null); return }
-    const tab = state.tabs.find(t => t.id === activeTab)
-    if (!tab) return
-    const items = [...tab.items]
-    const fromIdx = items.findIndex(i => i.id === dragId)
-    const toIdx = items.findIndex(i => i.id === targetId)
-    if (fromIdx === -1 || toIdx === -1) return
-    const [moved] = items.splice(fromIdx, 1)
-    items.splice(toIdx, 0, moved)
-    setDragId(null); setDragOverId(null)
-    updateItems(activeTab, items)
-  }
-
-  const onItemDragEnd = () => { setDragId(null); setDragOverId(null) }
 
   const addTab = () => {
     const name = newTabName.trim()
     if (!name) return
-    const newTab = { id: uid(), name, items: [] }
+    const newTab = { id: uid(), name, groups: [{ id: uid(), name: 'General', items: [] }] }
     const newState = { ...state, tabs: [...state.tabs, newTab] }
     update(newState)
     setActiveTabWithHash(newTab.id, [...state.tabs, newTab])
-    setNewTabName('')
-    setAddingTab(false)
+    setNewTabName(''); setAddingTab(false)
   }
 
   const renameTab = (tabId) => {
     const name = editingTabNameVal.trim()
     if (!name) { setEditingTabName(null); return }
-    const newState = { ...state, tabs: state.tabs.map(t => t.id === tabId ? { ...t, name } : t) }
-    update(newState)
+    updateTab(tabId, t => ({ ...t, name }))
     setEditingTabName(null)
   }
 
   const deleteTab = (tabId) => {
     if (!confirm('Delete this tab and all its trackers?')) return
     const newTabs = state.tabs.filter(t => t.id !== tabId)
-    const newState = { ...state, tabs: newTabs }
-    update(newState)
+    update({ ...state, tabs: newTabs })
     if (activeTab === tabId) { if (newTabs[0]) setActiveTabWithHash(newTabs[0].id, newTabs); else setActiveTab(null) }
   }
 
-  const addItem = (tabId, type) => {
-    const tab = state.tabs.find(t => t.id === tabId)
-    if (!tab) return
+  const addGroup = (tabId) => {
+    updateTab(tabId, t => ({ ...t, groups: [...(t.groups||[]), { id: uid(), name: 'New Group', items: [] }] }))
+  }
+
+  const renameGroup = (tabId, groupId) => {
+    const name = editingGroupNameVal.trim()
+    if (!name) { setEditingGroupName(null); return }
+    updateTab(tabId, t => ({ ...t, groups: t.groups.map(g => g.id === groupId ? { ...g, name } : g) }))
+    setEditingGroupName(null)
+  }
+
+  const deleteGroup = (tabId, groupId) => {
+    if (!confirm('Delete this group and all its trackers?')) return
+    updateTab(tabId, t => ({ ...t, groups: t.groups.filter(g => g.id !== groupId) }))
+  }
+
+  const addItem = (tabId, groupId, type) => {
     const newItem = type === 'bar'
       ? { id: uid(), type: 'bar', label: 'New Tracker', current: 0, max: 100, palette: 0, image: '' }
       : type === 'clock'
       ? { id: uid(), type: 'clock', label: 'New Clock', segments: 6, filled: 0, palette: 0, image: '' }
       : { id: uid(), type: 'level', label: 'New Institution', palette: 0, image: '', currentLevel: 0,
-          levels: [
-            { label: 'Repair', max: 100, current: 0, description: '' },
-            { label: 'Upgrade', max: 100, current: 0, description: '' },
-          ] }
-    updateItems(tabId, [...tab.items, newItem])
+          levels: [{ label: 'Repair', max: 100, current: 0, description: '' }, { label: 'Upgrade', max: 100, current: 0, description: '' }] }
+    updateTab(tabId, t => ({ ...t, groups: t.groups.map(g => g.id === groupId ? { ...g, items: [...g.items, newItem] } : g) }))
   }
 
-  const updateItem = (tabId, itemId, newItem) => {
-    const tab = state.tabs.find(t => t.id === tabId)
-    if (!tab) return
-    updateItems(tabId, tab.items.map(it => it.id === itemId ? newItem : it))
+  const updateItem = (tabId, groupId, itemId, newItem) => {
+    updateTab(tabId, t => ({ ...t, groups: t.groups.map(g => g.id === groupId ? { ...g, items: g.items.map(it => it.id === itemId ? newItem : it) } : g) }))
   }
 
-  const deleteItem = (tabId, itemId) => {
+  const deleteItem = (tabId, groupId, itemId) => {
+    updateTab(tabId, t => ({ ...t, groups: t.groups.map(g => g.id === groupId ? { ...g, items: g.items.filter(it => it.id !== itemId) } : g) }))
+  }
+
+  // Drag handlers — items can move within and between groups
+  const onItemDragStart = (e, itemId) => { setDragId(itemId); e.dataTransfer.effectAllowed = 'move' }
+  const onItemDragEnd = () => { setDragId(null); setDragOverId(null); setDragOverGroup(null) }
+
+  const onItemDragOver = (e, itemId) => { e.preventDefault(); if (itemId !== dragId) setDragOverId(itemId) }
+
+  const onGroupDragOver = (e, groupId) => { e.preventDefault(); setDragOverGroup(groupId); setDragOverId(null) }
+
+  const onItemDrop = (e, targetItemId, targetGroupId, tabId) => {
+    e.preventDefault()
+    if (!dragId) return
+    // Find source
     const tab = state.tabs.find(t => t.id === tabId)
     if (!tab) return
-    updateItems(tabId, tab.items.filter(it => it.id !== itemId))
+    let srcGroupId = null, srcItem = null
+    for (const g of tab.groups) {
+      const found = g.items.find(i => i.id === dragId)
+      if (found) { srcGroupId = g.id; srcItem = found; break }
+    }
+    if (!srcGroupId || !srcItem) return
+    setDragId(null); setDragOverId(null); setDragOverGroup(null)
+    updateTab(tabId, t => {
+      // Remove from source
+      let groups = t.groups.map(g => g.id === srcGroupId ? { ...g, items: g.items.filter(i => i.id !== dragId) } : g)
+      // Insert before target in target group
+      groups = groups.map(g => {
+        if (g.id !== targetGroupId) return g
+        const items = [...g.items]
+        const toIdx = items.findIndex(i => i.id === targetItemId)
+        items.splice(toIdx === -1 ? items.length : toIdx, 0, srcItem)
+        return { ...g, items }
+      })
+      return { ...t, groups }
+    })
+  }
+
+  const onGroupDrop = (e, targetGroupId, tabId) => {
+    e.preventDefault()
+    if (!dragId) return
+    const tab = state.tabs.find(t => t.id === tabId)
+    if (!tab) return
+    let srcGroupId = null, srcItem = null
+    for (const g of tab.groups) {
+      const found = g.items.find(i => i.id === dragId)
+      if (found) { srcGroupId = g.id; srcItem = found; break }
+    }
+    if (!srcGroupId || !srcItem || srcGroupId === targetGroupId) { setDragId(null); setDragOverGroup(null); return }
+    setDragId(null); setDragOverId(null); setDragOverGroup(null)
+    updateTab(tabId, t => ({
+      ...t,
+      groups: t.groups.map(g => {
+        if (g.id === srcGroupId) return { ...g, items: g.items.filter(i => i.id !== dragId) }
+        if (g.id === targetGroupId) return { ...g, items: [...g.items, srcItem] }
+        return g
+      })
+    }))
   }
 
   const activeTabData = state?.tabs?.find(t => t.id === activeTab)
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 300,
-      background: '#f8f7f4', display: 'flex', flexDirection: 'column',
-      fontFamily: "'Source Serif 4', Georgia, serif",
-    }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: '#f8f7f4', display: 'flex', flexDirection: 'column', fontFamily: "'Source Serif 4', Georgia, serif" }}>
       {/* Header */}
       <div style={{ borderBottom: '1px solid #ccc9c0', padding: '0 1.5rem', height: 50, display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0, background: '#f8f7f4' }}>
         <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '1.1rem', color: '#1b4f72' }}>Tracker</span>
@@ -658,7 +701,7 @@ export default function Tracker({ user, onClose }) {
             }
             {admin && activeTab === tab.id && state.tabs.length > 1 && (
               <span onClick={e => { e.stopPropagation(); deleteTab(tab.id) }}
-                style={{ fontSize: '0.65rem', color: '#bbb', cursor: 'pointer', lineHeight: 1 }} title='Delete tab'>✕</span>
+                style={{ fontSize: '0.65rem', color: '#bbb', cursor: 'pointer', lineHeight: 1 }}>✕</span>
             )}
           </div>
         ))}
@@ -673,7 +716,7 @@ export default function Tracker({ user, onClose }) {
                 <button onClick={() => { setAddingTab(false); setNewTabName('') }} style={{ ...btnSecondary, padding: '3px 6px' }}>✕</button>
               </div>
             : <button onClick={() => setAddingTab(true)}
-                style={{ padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#aaa', fontSize: '1.1rem', marginBottom: 2 }} title='Add tab'>+</button>
+                style={{ padding: '8px 12px', border: 'none', background: 'none', cursor: 'pointer', color: '#aaa', fontSize: '1.1rem', marginBottom: 2 }}>+</button>
         )}
       </div>
 
@@ -685,74 +728,115 @@ export default function Tracker({ user, onClose }) {
             <div style={{ marginTop: 6, color: '#888', fontSize: '0.78rem' }}>Check that firestore rules have been deployed via <code>firebase deploy --only firestore:rules</code></div>
           </div>
         )}
-
         {!loaded && <div style={{ color: '#aaa', fontStyle: 'italic' }}>Loading…</div>}
-
-        {loaded && !activeTabData && (
-          <div style={{ color: '#aaa', fontStyle: 'italic' }}>No tabs yet. {admin ? 'Use + to add one.' : ''}</div>
-        )}
+        {loaded && !activeTabData && <div style={{ color: '#aaa', fontStyle: 'italic' }}>No tabs yet.{admin ? ' Use + to add one.' : ''}</div>}
 
         {loaded && activeTabData && (
-          <>
-            {/* Items */}
-            <div style={{ maxWidth: 560 }}>
-              {activeTabData.items.length === 0 && (
-                <div style={{ color: '#aaa', fontStyle: 'italic', marginBottom: 16, fontSize: '0.88rem' }}>
-                  No trackers yet.{admin ? ' Add one below.' : ''}
-                </div>
-              )}
-              {activeTabData.items.map(item => (
-                <div key={item.id}
-                  draggable={admin}
-                  onDragStart={admin ? e => onItemDragStart(e, item.id) : undefined}
-                  onDragOver={admin ? e => onItemDragOver(e, item.id) : undefined}
-                  onDrop={admin ? e => onItemDrop(e, item.id) : undefined}
-                  onDragEnd={admin ? onItemDragEnd : undefined}
-                  style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 4,
-                    opacity: dragId === item.id ? 0.35 : 1,
-                    borderTop: dragOverId === item.id ? '2px solid #1b4f72' : '2px solid transparent',
-                    transition: 'opacity 0.15s, border-color 0.1s',
-                  }}>
-                  {admin && (
-                    <div style={{ paddingTop: 14, color: '#ccc', fontSize: '0.75rem', cursor: 'grab', userSelect: 'none', flexShrink: 0 }} title='Drag to reorder'>⠿</div>
-                  )}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {item.type === 'bar'
-                      ? <TrackerBar item={item} editable={admin}
-                          onChange={newItem => updateItem(activeTab, item.id, newItem)}
-                          onDelete={() => deleteItem(activeTab, item.id)}/>
-                      : item.type === 'clock'
-                      ? <TrackerClock item={item} editable={admin}
-                          onChange={newItem => updateItem(activeTab, item.id, newItem)}
-                          onDelete={() => deleteItem(activeTab, item.id)}/>
-                      : <TrackerLevel item={item} editable={admin}
-                          onChange={newItem => updateItem(activeTab, item.id, newItem)}
-                          onDelete={() => deleteItem(activeTab, item.id)}/>
-                    }
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div style={{ maxWidth: 580 }}>
+            {(activeTabData.groups || []).map(group => {
+              const collapsed = !!collapsedGroups[group.id]
+              const isGroupDropTarget = dragOverGroup === group.id
 
-            {/* Add buttons — admin only */}
+              return (
+                <div key={group.id} style={{ marginBottom: 18 }}>
+                  {/* Group header */}
+                  <div
+                    onDragOver={e => onGroupDragOver(e, group.id)}
+                    onDrop={e => onGroupDrop(e, group.id, activeTab)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '4px 8px', marginBottom: 6,
+                      background: isGroupDropTarget ? '#ddeeff' : 'transparent',
+                      borderRadius: 4, border: isGroupDropTarget ? '1px dashed #1b4f72' : '1px solid transparent',
+                      transition: 'background 0.1s',
+                    }}>
+                    <button onClick={() => setCollapsedGroups(p => ({ ...p, [group.id]: !p[group.id] }))}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', fontSize: '0.6rem', padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>
+                      {collapsed ? '▶' : '▼'}
+                    </button>
+                    {editingGroupName === group.id && admin
+                      ? <input autoFocus value={editingGroupNameVal}
+                          onChange={e => setEditingGroupNameVal(e.target.value)}
+                          onBlur={() => renameGroup(activeTab, group.id)}
+                          onKeyDown={e => { if (e.key === 'Enter') renameGroup(activeTab, group.id); if (e.key === 'Escape') setEditingGroupName(null) }}
+                          style={{ flex: 1, padding: '2px 6px', border: '1px solid #1b4f72', borderRadius: 2, fontSize: '0.8rem', fontFamily: "'IM Fell English', serif" }}/>
+                      : <span
+                          onDoubleClick={() => { if (admin) { setEditingGroupName(group.id); setEditingGroupNameVal(group.name) } }}
+                          style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#888', fontWeight: 700, flex: 1, cursor: admin ? 'text' : 'default', userSelect: 'none' }}>
+                          {group.name}
+                        </span>
+                    }
+                    {admin && !editingGroupName && (
+                      <>
+                        <button onClick={() => { setEditingGroupName(group.id); setEditingGroupNameVal(group.name) }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '0.65rem', padding: '0 2px', lineHeight: 1 }} title='Rename group'>✎</button>
+                        <button onClick={() => deleteGroup(activeTab, group.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dbb', fontSize: '0.65rem', padding: '0 2px', lineHeight: 1 }} title='Delete group'>🗑</button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Group items */}
+                  {!collapsed && (
+                    <>
+                      {group.items.length === 0 && (
+                        <div style={{ color: '#bbb', fontStyle: 'italic', fontSize: '0.82rem', paddingLeft: 16, marginBottom: 6 }}>
+                          {admin ? 'Empty — drag items here or add below.' : 'Nothing here yet.'}
+                        </div>
+                      )}
+                      {group.items.map(item => (
+                        <div key={item.id}
+                          draggable={admin}
+                          onDragStart={admin ? e => onItemDragStart(e, item.id) : undefined}
+                          onDragOver={admin ? e => onItemDragOver(e, item.id) : undefined}
+                          onDrop={admin ? e => onItemDrop(e, item.id, group.id, activeTab) : undefined}
+                          onDragEnd={admin ? onItemDragEnd : undefined}
+                          style={{
+                            display: 'flex', alignItems: 'flex-start', gap: 4,
+                            opacity: dragId === item.id ? 0.35 : 1,
+                            borderTop: dragOverId === item.id ? '2px solid #1b4f72' : '2px solid transparent',
+                            transition: 'opacity 0.15s, border-color 0.1s',
+                          }}>
+                          {admin && <div style={{ paddingTop: 14, color: '#ccc', fontSize: '0.75rem', cursor: 'grab', userSelect: 'none', flexShrink: 0 }}>⠿</div>}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            {item.type === 'bar'
+                              ? <TrackerBar item={item} editable={admin}
+                                  onChange={newItem => updateItem(activeTab, group.id, item.id, newItem)}
+                                  onDelete={() => deleteItem(activeTab, group.id, item.id)}/>
+                              : item.type === 'clock'
+                              ? <TrackerClock item={item} editable={admin}
+                                  onChange={newItem => updateItem(activeTab, group.id, item.id, newItem)}
+                                  onDelete={() => deleteItem(activeTab, group.id, item.id)}/>
+                              : <TrackerLevel item={item} editable={admin}
+                                  onChange={newItem => updateItem(activeTab, group.id, item.id, newItem)}
+                                  onDelete={() => deleteItem(activeTab, group.id, item.id)}/>
+                            }
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Per-group add buttons */}
+                      {admin && (
+                        <div style={{ display: 'flex', gap: 6, marginTop: 4, paddingLeft: 16, flexWrap: 'wrap' }}>
+                          <button onClick={() => addItem(activeTab, group.id, 'bar')} style={{ ...btnSecondary, padding: '3px 10px', fontSize: '0.75rem' }}>▬ Bar</button>
+                          <button onClick={() => addItem(activeTab, group.id, 'clock')} style={{ ...btnSecondary, padding: '3px 10px', fontSize: '0.75rem' }}>◕ Clock</button>
+                          <button onClick={() => addItem(activeTab, group.id, 'level')} style={{ ...btnSecondary, padding: '3px 10px', fontSize: '0.75rem' }}>◈ Level</button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* Add group button */}
             {admin && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => addItem(activeTab, 'bar')}
-                  style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: '0.85rem' }}>▬</span> Add Tracker Bar
-                </button>
-                <button onClick={() => addItem(activeTab, 'clock')}
-                  style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: '0.85rem' }}>◕</span> Add Clock
-                </button>
-                <button onClick={() => addItem(activeTab, 'level')}
-                  style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: '0.85rem' }}>◈</span> Add Level Tracker
-                </button>
-              </div>
+              <button onClick={() => addGroup(activeTab)}
+                style={{ ...btnSecondary, marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem' }}>
+                + Add Group
+              </button>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>
