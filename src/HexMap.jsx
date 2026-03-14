@@ -105,19 +105,46 @@ function HexEditor({ hexKey, hexData, coordLabel, isCenter, centerName, onSave, 
           disabled={!admin} rows={3}
           style={{ ...inp, resize: 'vertical', lineHeight: 1.6, marginBottom: 10 }}/>
 
-        <label style={{ ...lb, marginBottom: 8 }}>Marker</label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginBottom: 12 }}>
-          {MARKERS.map(m => (
-            <div key={m.id} onClick={() => admin && set('marker', m.id)}
-              title={m.label}
-              style={{ padding: '5px 3px', borderRadius: 4, textAlign: 'center',
-                border: `1px solid ${draft.marker === m.id ? '#1b4f72' : '#e0ddd8'}`,
-                background: draft.marker === m.id ? '#e8f0f8' : '#f8f7f4',
-                cursor: admin ? 'pointer' : 'default', fontSize: '1.1rem',
-                lineHeight: 1.3 }}>
-              {m.emoji || '○'}
+        <label style={{ ...lb, marginBottom: 6 }}>Marker</label>
+        <div style={{ marginBottom: 10 }}>
+          {/* Current marker display + direct emoji input */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+            <div style={{ width: 36, height: 36, border: '1px solid #ccc9c0', borderRadius: 4,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '1.4rem', background: '#f8f7f4', flexShrink: 0,
+              filter: 'grayscale(1)' }}>
+              {draft.marker || '○'}
             </div>
-          ))}
+            <input value={draft.marker === '○' || !draft.marker ? '' : draft.marker}
+              onChange={e => admin && set('marker', e.target.value.slice(-2) || '○')}
+              disabled={!admin}
+              placeholder='Paste any emoji…'
+              style={{ ...inp, flex: 1, fontSize: '1rem' }}/>
+            {admin && draft.marker && draft.marker !== '○' && (
+              <button onClick={() => set('marker', '○')}
+                style={{ padding: '4px 8px', border: '1px solid #e0ddd8', borderRadius: 3,
+                  background: '#f8f7f4', cursor: 'pointer', fontSize: '0.72rem', color: '#aaa', flexShrink: 0 }}>
+                Clear
+              </button>
+            )}
+          </div>
+          {/* Quick-pick common symbols */}
+          {admin && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+              {['🏰','🏠','🗝','🪨','🌲','⛰','🌊','💀','❓','🔥','👤','⚡','🛤','🌿','🔮',
+                '🐉','⚔','🛡','🌙','☀','❄','🌋','🏔','🕯','📜','💎','🐺','🦅','🐍','🌾',
+                '🗡','🏹','🎯','🧿','⚗','🔔','🌑','🌕','🌫','🌪'].map(em => (
+                <div key={em} onClick={() => set('marker', em)}
+                  style={{ width: 28, height: 28, display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', borderRadius: 3, cursor: 'pointer',
+                    fontSize: '1rem', border: `1px solid ${draft.marker===em?'#1b4f72':'#e0ddd8'}`,
+                    background: draft.marker===em?'#e8f0f8':'#f8f7f4',
+                    filter: 'grayscale(1)' }}>
+                  {em}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <label style={{ ...lb, marginBottom: 6 }}>
@@ -239,7 +266,20 @@ function HexMapTab({ mapId, centerName, user, cols, rows }) {
   const onWheel = useCallback((e) => {
     e.preventDefault()
     const delta = e.deltaY > 0 ? 0.9 : 1.1
-    setZoom(z => Math.max(0.3, Math.min(3, z * delta)))
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    // Mouse position relative to container
+    const mx = e.clientX - rect.left
+    const my = e.clientY - rect.top
+    // Zoom toward mouse: adjust pan so the point under cursor stays fixed
+    setZoom(prevZoom => {
+      const newZoom = Math.max(0.3, Math.min(3, prevZoom * delta))
+      setPan(prevPan => ({
+        x: mx - (mx - prevPan.x) * (newZoom / prevZoom),
+        y: my - (my - prevPan.y) * (newZoom / prevZoom),
+      }))
+      return newZoom
+    })
   }, [])
 
   useEffect(() => {
@@ -367,7 +407,7 @@ function HexMapTab({ mapId, centerName, user, cols, rows }) {
                 {/* Center settlement */}
                 {isCenter && (
                   <>
-                    <text x={x} y={y - 6} textAnchor='middle' fontSize={18} style={{ userSelect: 'none' }}>🏰</text>
+                    <text x={x} y={y - 6} textAnchor='middle' fontSize={18} style={{ userSelect: 'none', filter: 'grayscale(1)' }}>🏰</text>
                     <text x={x} y={y + 10} textAnchor='middle' fontSize={7}
                       fill='#1b4f72' fontWeight='bold' style={{ userSelect: 'none' }}>
                       {centerName}
@@ -375,10 +415,11 @@ function HexMapTab({ mapId, centerName, user, cols, rows }) {
                   </>
                 )}
 
-                {/* Marker emoji */}
-                {!isCenter && marker?.emoji && (
-                  <text x={x} y={y + 6} textAnchor='middle' fontSize={16} style={{ userSelect: 'none' }}>
-                    {marker.emoji}
+                {/* Marker emoji — grayscale so danger tint colour shows through hex fill */}
+                {!isCenter && data?.marker && data.marker !== '○' && (
+                  <text x={x} y={y + 6} textAnchor='middle' fontSize={16}
+                    style={{ userSelect: 'none', filter: 'grayscale(1)' }}>
+                    {data.marker}
                   </text>
                 )}
 
