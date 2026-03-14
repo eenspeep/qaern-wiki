@@ -20,5 +20,11 @@ service cloud.firestore {
     match /keeper_history/{docId} {
       allow read, write: if request.auth != null && request.auth.token.name == 'speep';
     }
+
+    // Tracker: all authenticated users can read; only speep can write
+    match /tracker/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.name == 'speep';
+    }
   }
 }
