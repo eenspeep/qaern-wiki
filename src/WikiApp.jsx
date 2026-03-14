@@ -10,6 +10,7 @@ import { INITIAL_ARTICLES } from './seedData'
 import WikiKeeper from './WikiKeeper'
 import Tracker from './Tracker'
 import BulletinBoard from './BulletinBoard'
+import HexMap from './HexMap'
 import InitiativeTracker from './InitiativeTracker'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -549,6 +550,7 @@ export default function WikiApp() {
   const [showTracker, setShowTracker] = useState(false)
   const [showBulletin, setShowBulletin] = useState(false)
   const [showInitiative, setShowInitiative] = useState(false)
+  const [showHexMap, setShowHexMap] = useState(false)
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   const [collapsedCats, setCollapsedCats] = useState({})
   const [newCatInput, setNewCatInput] = useState('')
@@ -833,6 +835,10 @@ export default function WikiApp() {
         {!isMobile && (
           <button onClick={()=>setShowInitiative(true)}
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>⚔ Initiative</button>
+        )}
+        {!isMobile && (
+          <button onClick={()=>setShowHexMap(true)}
+            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>🗺 Map</button>
         )}
         {!isMobile && (
           <button onClick={()=>{setCreating(true);setEditing(false)}}
@@ -1122,6 +1128,11 @@ export default function WikiApp() {
             <span style={{fontSize:'1.1rem'}}>⚔</span>
             <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Initiative</span>
           </button>
+          <button onClick={()=>setShowHexMap(true)}
+            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
+            <span style={{fontSize:'1.1rem'}}>🗺</span>
+            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Map</span>
+          </button>
           <button onClick={()=>{setCreating(true);setEditing(false);setSidebarOpen(false)}}
             style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#1b4f72',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
             <span style={{fontSize:'1.1rem'}}>✍</span>
@@ -1138,6 +1149,7 @@ export default function WikiApp() {
       {showTracker && <Tracker user={user} onClose={()=>setShowTracker(false)}/> }
       {showBulletin && <BulletinBoard user={user} onClose={()=>{ setShowBulletin(false); history.replaceState(null,'',window.location.pathname) }}/>}
       {showInitiative && <InitiativeTracker user={user} onClose={()=>setShowInitiative(false)}/>}
+      {showHexMap && <HexMap user={user} onClose={()=>setShowHexMap(false)}/>}
 
       <WikiKeeper
         articles={articles}
