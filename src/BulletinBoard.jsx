@@ -8,20 +8,20 @@ const isAdmin = user => user?.displayName === ADMIN
 
 const NOTE_TYPES = {
   adventure: { label: 'Adventure', color: '#c8a86b', bg: '#fdf3dc', pin: '#c0392b' },
-  rumour:  { label: 'Rumour',  color: '#7a9e7e', bg: '#eef6ee', pin: '#27ae60' },
-  bounty:  { label: 'Bounty',  color: '#c06a3a', bg: '#fdeede', pin: '#e67e22' },
-  notice:  { label: 'Notice',  color: '#7a7a9e', bg: '#eeeefc', pin: '#8e44ad' },
+  rumour:    { label: 'Rumour',    color: '#7a9e7e', bg: '#eef6ee', pin: '#27ae60' },
+  bounty:    { label: 'Bounty',    color: '#c06a3a', bg: '#fdeede', pin: '#e67e22' },
+  notice:    { label: 'Notice',    color: '#7a7a9e', bg: '#eeeefc', pin: '#8e44ad' },
 }
 
 const uid = () => Math.random().toString(36).slice(2, 10)
 
-// Slight random rotation for each note — seeded by id so stable
 const noteRotation = (id) => {
   let h = 0
   for (let i = 0; i < id.length; i++) h = (Math.imul(31, h) + id.charCodeAt(i)) | 0
-  return ((h % 7) - 3) * 0.8  // -2.4 to +2.4 degrees
+  return ((h % 7) - 3) * 0.8
 }
 
+// ─── Top pin ──────────────────────────────────────────────────────────────────
 function Pin({ color }) {
   return (
     <div style={{
@@ -29,13 +29,129 @@ function Pin({ color }) {
       width: 16, height: 16, borderRadius: '50%',
       background: `radial-gradient(circle at 35% 35%, #fff8, ${color} 60%)`,
       boxShadow: `0 2px 4px rgba(0,0,0,0.4), inset 0 1px 2px rgba(255,255,255,0.3)`,
-      zIndex: 2,
-      cursor: 'default',
+      zIndex: 2, cursor: 'default',
     }}/>
   )
 }
 
-function NoteCard({ note, admin, onEdit, onDelete, onDragStart, isDragging }) {
+// ─── RSVP pin slot ────────────────────────────────────────────────────────────
+function RsvpPin({ filled, name, isMe, onClick, disabled }) {
+  const [hovered, setHovered] = useState(false)
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}>
+      <div
+        onClick={disabled ? undefined : onClick}
+        title={filled ? name : 'Claim spot'}
+        style={{
+          width: 14, height: 14, borderRadius: '50%',
+          background: filled
+            ? `radial-gradient(circle at 35% 35%, #fff6, ${isMe ? '#1b4f72' : '#8b3a3a'} 60%)`
+            : 'rgba(0,0,0,0.12)',
+          border: filled
+            ? `1.5px solid ${isMe ? '#1b4f72' : '#8b3a3a'}`
+            : '1.5px dashed rgba(0,0,0,0.25)',
+          boxShadow: filled ? '0 1px 3px rgba(0,0,0,0.3)' : 'none',
+          cursor: disabled ? 'default' : filled && isMe ? 'pointer' : !filled ? 'pointer' : 'default',
+          transition: 'background 0.15s, transform 0.1s',
+          transform: hovered && !disabled ? 'scale(1.2)' : 'scale(1)',
+        }}/>
+      {/* Tooltip */}
+      {hovered && filled && (
+        <div style={{
+          position: 'fixed',
+          transform: 'translate(-50%, -120%)',
+          background: '#1a1a1a', color: '#e8e4dc',
+          padding: '3px 8px', borderRadius: 4,
+          fontSize: '0.68rem', whiteSpace: 'nowrap',
+          pointerEvents: 'none', zIndex: 9999,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+        }}
+          ref={el => {
+            if (el) {
+              const parent = el.parentElement?.getBoundingClientRect()
+              if (parent) {
+                el.style.left = parent.left + parent.width / 2 + 'px'
+                el.style.top = parent.top + 'px'
+              }
+            }
+          }}>
+          {name}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── RSVP row ─────────────────────────────────────────────────────────────────
+function RsvpRow({ note, user, onRsvpChange }) {
+  if (!note.maxPlayers || note.maxPlayers < 1) return null
+  const max = parseInt(note.maxPlayers) || 0
+  const rsvps = note.rsvps || []
+  const myRsvp = rsvps.find(r => r.uid === user?.uid)
+  const isFull = rsvps.length >= max && !myRsvp
+
+  const handleClick = (slotIdx) => {
+    const slotRsvp = rsvps[slotIdx]
+    if (slotRsvp) {
+      // Only the owner or admin can unclaim
+      if (slotRsvp.uid === user?.uid || isAdmin(user)) {
+        onRsvpChange(rsvps.filter((_, i) => i !== slotIdx))
+      }
+    } else if (!myRsvp && !isFull) {
+      // Claim this slot
+      const name = user?.displayName || user?.email || 'Anonymous'
+      onRsvpChange([...rsvps, { uid: user.uid, name }])
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid rgba(0,0,0,0.08)' }}>
+      <div style={{ fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.07em',
+        color: 'rgba(0,0,0,0.4)', marginBottom: 5 }}>
+        Players {rsvps.length}/{max}
+      </div>
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', alignItems: 'center' }}>
+        {Array.from({ length: max }).map((_, i) => {
+          const rsvp = rsvps[i]
+          const isMe = rsvp?.uid === user?.uid
+          const canInteract = rsvp
+            ? (isMe || isAdmin(user))  // can unclaim own or admin can remove any
+            : !myRsvp && !isFull       // can claim if no spot yet and not full
+          return (
+            <RsvpPin
+              key={i}
+              filled={!!rsvp}
+              name={rsvp?.name || ''}
+              isMe={isMe}
+              disabled={!canInteract}
+              onClick={() => handleClick(i)}
+            />
+          )
+        })}
+        {!myRsvp && !isFull && (
+          <span style={{ fontSize: '0.62rem', color: 'rgba(0,0,0,0.3)', fontStyle: 'italic' }}>
+            click to join
+          </span>
+        )}
+        {myRsvp && (
+          <span style={{ fontSize: '0.62rem', color: '#1b4f72', fontStyle: 'italic' }}>
+            ✓ you're in
+          </span>
+        )}
+        {isFull && !myRsvp && (
+          <span style={{ fontSize: '0.62rem', color: '#b44', fontStyle: 'italic' }}>
+            full
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Note card ────────────────────────────────────────────────────────────────
+function NoteCard({ note, admin, user, onEdit, onDelete, onDragStart, isDragging, onRsvpChange }) {
   const [expanded, setExpanded] = useState(false)
   const type = NOTE_TYPES[note.type] || NOTE_TYPES.notice
   const rot = noteRotation(note.id)
@@ -46,7 +162,7 @@ function NoteCard({ note, admin, onEdit, onDelete, onDragStart, isDragging }) {
       style={{
         position: 'absolute',
         left: note.x, top: note.y,
-        width: 180,
+        width: 190,
         background: type.bg,
         borderRadius: 2,
         padding: '18px 12px 12px',
@@ -58,65 +174,56 @@ function NoteCard({ note, admin, onEdit, onDelete, onDragStart, isDragging }) {
         cursor: admin ? 'grab' : 'default',
         userSelect: 'none',
         zIndex: isDragging ? 1000 : 1,
-        // Paper texture via repeating gradient
         backgroundImage: `
           linear-gradient(${type.bg} 0%, ${type.bg} 100%),
           repeating-linear-gradient(
-            0deg,
-            transparent,
-            transparent 24px,
-            rgba(0,0,0,0.04) 24px,
-            rgba(0,0,0,0.04) 25px
+            0deg, transparent, transparent 24px,
+            rgba(0,0,0,0.04) 24px, rgba(0,0,0,0.04) 25px
           )
         `,
         backgroundBlendMode: 'multiply',
       }}>
       <Pin color={type.pin}/>
 
-      {/* Type badge */}
-      <div style={{
-        fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase',
-        letterSpacing: '0.1em', color: type.color,
-        marginBottom: 5, opacity: 0.85,
-      }}>{type.label}</div>
+      <div style={{ fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '0.1em', color: type.color, marginBottom: 5, opacity: 0.85 }}>
+        {type.label}
+      </div>
 
-      {/* Title */}
-      <div style={{
-        fontFamily: "'IM Fell English', serif",
-        fontSize: '0.88rem', fontWeight: 600,
-        color: '#2a1f0e', lineHeight: 1.3,
-        marginBottom: 6,
-      }}>{note.title}</div>
+      <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '0.88rem', fontWeight: 600,
+        color: '#2a1f0e', lineHeight: 1.3, marginBottom: 6 }}>
+        {note.title}
+      </div>
 
-      {/* Body — truncated unless expanded */}
       {note.body && (
-        <div style={{
-          fontSize: '0.72rem', color: '#4a3a28', lineHeight: 1.55,
+        <div style={{ fontSize: '0.72rem', color: '#4a3a28', lineHeight: 1.55,
           fontFamily: "'Source Serif 4', Georgia, serif",
-          maxHeight: expanded ? 'none' : '3.1em',
-          overflow: 'hidden',
-          cursor: 'pointer',
-        }}
-          onClick={e => { e.stopPropagation(); setExpanded(e => !e) }}>
+          maxHeight: expanded ? 'none' : '3.1em', overflow: 'hidden', cursor: 'pointer' }}
+          onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}>
           {note.body}
         </div>
       )}
       {note.body && note.body.length > 80 && (
-        <div onClick={e => { e.stopPropagation(); setExpanded(e => !e) }}
+        <div onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
           style={{ fontSize: '0.65rem', color: type.color, marginTop: 2, cursor: 'pointer', opacity: 0.8 }}>
           {expanded ? '▲ less' : '▼ more'}
         </div>
       )}
+
       {note.type === 'adventure' && (note.rewards || note.level || note.length) && (
-        <div style={{ marginTop: 7, paddingTop: 6, borderTop: '1px solid rgba(0,0,0,0.08)', fontSize: '0.67rem',
-          color: '#5a4a30', fontFamily: "'Source Serif 4', Georgia, serif", lineHeight: 1.6 }}>
+        <div style={{ marginTop: 7, paddingTop: 6, borderTop: '1px solid rgba(0,0,0,0.08)',
+          fontSize: '0.67rem', color: '#5a4a30', fontFamily: "'Source Serif 4', Georgia, serif", lineHeight: 1.6 }}>
           {note.rewards && <div><span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6rem', opacity: 0.7 }}>Rewards </span>{note.rewards}</div>}
-          {note.level && <div><span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6rem', opacity: 0.7 }}>Level </span>{note.level}</div>}
+          {note.level  && <div><span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6rem', opacity: 0.7 }}>Level </span>{note.level}</div>}
           {note.length && <div><span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.6rem', opacity: 0.7 }}>Length </span>{note.length}</div>}
         </div>
       )}
 
-      {/* Admin controls */}
+      {/* RSVP pins */}
+      <div onMouseDown={e => e.stopPropagation()}>
+        <RsvpRow note={note} user={user} onRsvpChange={onRsvpChange}/>
+      </div>
+
       {admin && (
         <div style={{ display: 'flex', gap: 4, marginTop: 8, justifyContent: 'flex-end' }}>
           <button onMouseDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); onEdit() }}
@@ -131,8 +238,12 @@ function NoteCard({ note, admin, onEdit, onDelete, onDragStart, isDragging }) {
   )
 }
 
+// ─── Note editor ──────────────────────────────────────────────────────────────
 function NoteEditor({ note, onSave, onCancel }) {
-  const [draft, setDraft] = useState(note || { type: 'adventure', title: '', body: '', rewards: '', level: '', length: '' })
+  const [draft, setDraft] = useState(note || {
+    type: 'adventure', title: '', body: '',
+    rewards: '', level: '', length: '', maxPlayers: '',
+  })
   const inp = { width: '100%', padding: '6px 8px', border: '1px solid #ccc9c0', borderRadius: 3,
     fontSize: '0.85rem', fontFamily: "'Source Serif 4', Georgia, serif",
     background: '#faf8f4', color: '#222', boxSizing: 'border-box', marginBottom: 8 }
@@ -140,13 +251,13 @@ function NoteEditor({ note, onSave, onCancel }) {
     letterSpacing: '0.07em', color: '#888', marginBottom: 3 }
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000,
-    }} onClick={onCancel}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}
+      onClick={onCancel}>
       <div onClick={e => e.stopPropagation()} style={{
         background: '#fdf8f0', borderRadius: 6, padding: '1.5rem',
-        width: 360, boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
+        width: 380, maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.4)',
         fontFamily: "'Source Serif 4', Georgia, serif",
       }}>
         <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '1.1rem', color: '#1b4f72', marginBottom: '1rem' }}>
@@ -185,6 +296,11 @@ function NoteEditor({ note, onSave, onCancel }) {
           </div>
         </>)}
 
+        <label style={lb}>Maximum Players <span style={{ opacity: 0.5, fontStyle: 'italic', textTransform: 'none', letterSpacing: 0 }}>(leave blank for no RSVP)</span></label>
+        <input style={inp} type='number' min='1' max='20' value={draft.maxPlayers||''}
+          onChange={e => setDraft(d => ({ ...d, maxPlayers: e.target.value }))}
+          placeholder='e.g. 4'/>
+
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
           <button onClick={onCancel}
             style={{ padding: '6px 14px', border: '1px solid #ccc9c0', borderRadius: 3,
@@ -204,12 +320,13 @@ function NoteEditor({ note, onSave, onCancel }) {
   )
 }
 
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function BulletinBoard({ user, onClose }) {
   const admin = isAdmin(user)
   const [notes, setNotes] = useState([])
   const [loaded, setLoaded] = useState(false)
-  const [editing, setEditing] = useState(null)   // note object or 'new'
-  const [dragging, setDragging] = useState(null) // { id, offsetX, offsetY }
+  const [editing, setEditing] = useState(null)
+  const [dragging, setDragging] = useState(null)
   const boardRef = useRef(null)
   const writing = useRef(false)
 
@@ -238,15 +355,14 @@ export default function BulletinBoard({ user, onClose }) {
       const board = boardRef.current
       const w = board?.offsetWidth || 800
       const h = board?.offsetHeight || 600
-      const newNote = {
-        ...draft,
-        id: uid(),
+      newNotes = [...notes, {
+        ...draft, id: uid(), rsvps: [],
         x: 60 + Math.floor(Math.random() * (w - 280)),
         y: 40 + Math.floor(Math.random() * (h - 220)),
-      }
-      newNotes = [...notes, newNote]
+      }]
     } else {
-      newNotes = notes.map(n => n.id === editing.id ? { ...n, ...draft } : n)
+      // Preserve existing rsvps when editing
+      newNotes = notes.map(n => n.id === editing.id ? { ...n, ...draft, rsvps: n.rsvps || [] } : n)
     }
     setNotes(newNotes)
     persist(newNotes)
@@ -260,73 +376,53 @@ export default function BulletinBoard({ user, onClose }) {
     persist(newNotes)
   }
 
-  // Drag handling
+  const updateRsvp = (noteId, newRsvps) => {
+    const newNotes = notes.map(n => n.id === noteId ? { ...n, rsvps: newRsvps } : n)
+    setNotes(newNotes)
+    persist(newNotes)
+  }
+
   const onNoteMouseDown = useCallback((e, note) => {
     if (!admin) return
     e.preventDefault()
     const board = boardRef.current.getBoundingClientRect()
-    setDragging({
-      id: note.id,
-      offsetX: e.clientX - board.left - note.x,
-      offsetY: e.clientY - board.top - note.y,
-    })
-  }, [admin, notes])
+    setDragging({ id: note.id, offsetX: e.clientX - board.left - note.x, offsetY: e.clientY - board.top - note.y })
+  }, [admin])
 
   useEffect(() => {
     if (!dragging) return
     const onMove = (e) => {
       const board = boardRef.current?.getBoundingClientRect()
       if (!board) return
-      const x = Math.max(0, Math.min(e.clientX - board.left - dragging.offsetX, board.width - 190))
+      const x = Math.max(0, Math.min(e.clientX - board.left - dragging.offsetX, board.width - 200))
       const y = Math.max(0, Math.min(e.clientY - board.top - dragging.offsetY, board.height - 160))
       setNotes(prev => prev.map(n => n.id === dragging.id ? { ...n, x, y } : n))
     }
-    const onUp = () => {
-      setNotes(prev => {
-        persist(prev)
-        return prev
-      })
-      setDragging(null)
-    }
+    const onUp = () => { setNotes(prev => { persist(prev); return prev }); setDragging(null) }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [dragging])
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 300,
-      display: 'flex', flexDirection: 'column',
-      fontFamily: "'Source Serif 4', Georgia, serif",
-    }}>
-      {/* Header */}
-      <div style={{
-        background: '#2a1f0e', borderBottom: '2px solid #5a3e1e',
-        padding: '0 1.5rem', height: 50,
-        display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0,
-      }}>
-        <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '1.15rem', color: '#c8a86b' }}>
-          Town Bulletin
-        </span>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'flex', flexDirection: 'column',
+      fontFamily: "'Source Serif 4', Georgia, serif" }}>
+      <div style={{ background: '#2a1f0e', borderBottom: '2px solid #5a3e1e',
+        padding: '0 1.5rem', height: 50, display: 'flex', alignItems: 'center', gap: '1rem', flexShrink: 0 }}>
+        <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '1.15rem', color: '#c8a86b' }}>Town Bulletin</span>
         <div style={{ flex: 1 }}/>
         {admin && (
-          <button onClick={() => setEditing('new')} style={{
-            padding: '5px 14px', border: '1px solid #c8a86b', borderRadius: 3,
-            background: 'transparent', color: '#c8a86b', cursor: 'pointer',
-            fontSize: '0.82rem', fontFamily: "'Source Serif 4', Georgia, serif",
-          }}>+ Post Notice</button>
+          <button onClick={() => setEditing('new')} style={{ padding: '5px 14px', border: '1px solid #c8a86b',
+            borderRadius: 3, background: 'transparent', color: '#c8a86b', cursor: 'pointer',
+            fontSize: '0.82rem', fontFamily: "'Source Serif 4', Georgia, serif" }}>+ Post Notice</button>
         )}
-        <button onClick={onClose} style={{
-          padding: '5px 12px', border: '1px solid #5a3e1e', borderRadius: 3,
+        <button onClick={onClose} style={{ padding: '5px 12px', border: '1px solid #5a3e1e', borderRadius: 3,
           background: 'transparent', color: '#9a8a7a', cursor: 'pointer',
-          fontSize: '0.82rem', fontFamily: "'Source Serif 4', Georgia, serif",
-        }}>← Back</button>
+          fontSize: '0.82rem', fontFamily: "'Source Serif 4', Georgia, serif" }}>← Back</button>
       </div>
 
-      {/* Board */}
       <div ref={boardRef} style={{
         flex: 1, position: 'relative', overflow: 'hidden',
-        // Corkboard texture
         background: '#c4924a',
         backgroundImage: `
           radial-gradient(ellipse at 20% 30%, rgba(180,120,40,0.4) 0%, transparent 60%),
@@ -335,11 +431,8 @@ export default function BulletinBoard({ user, onClose }) {
           url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23c4924a'/%3E%3Ccircle cx='1' cy='1' r='0.5' fill='rgba(0,0,0,0.07)'/%3E%3Ccircle cx='3' cy='3' r='0.4' fill='rgba(0,0,0,0.05)'/%3E%3C/svg%3E")
         `,
       }}>
-        {/* Wooden frame border feel */}
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          boxShadow: 'inset 0 0 60px rgba(0,0,0,0.35)',
-        }}/>
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
+          boxShadow: 'inset 0 0 60px rgba(0,0,0,0.35)' }}/>
 
         {!loaded && (
           <div style={{ color: '#8a6a3a', fontSize: '0.9rem', fontStyle: 'italic',
@@ -347,7 +440,6 @@ export default function BulletinBoard({ user, onClose }) {
             Reading the board…
           </div>
         )}
-
         {loaded && notes.length === 0 && (
           <div style={{ color: '#8a6a3a', fontSize: '0.9rem', fontStyle: 'italic',
             position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
@@ -361,15 +453,16 @@ export default function BulletinBoard({ user, onClose }) {
             key={note.id}
             note={note}
             admin={admin}
+            user={user}
             isDragging={dragging?.id === note.id}
             onDragStart={(e) => onNoteMouseDown(e, note)}
             onEdit={() => setEditing(note)}
             onDelete={() => deleteNote(note.id)}
+            onRsvpChange={(newRsvps) => updateRsvp(note.id, newRsvps)}
           />
         ))}
       </div>
 
-      {/* Editor modal */}
       {editing && (
         <NoteEditor
           note={editing === 'new' ? null : editing}
