@@ -228,7 +228,7 @@ function linkifyContent(html, articles, currentId, onNavigate) {
 }
 
 // ─── Portrait Slideshow ───────────────────────────────────────────────────────
-function PortraitSlideshow({ urls, alt, onOpenLightbox, onIndexChange, onHeightChange }) {
+function PortraitSlideshow({ urls, alt, onOpenLightbox, onIndexChange }) {
   const DISPLAY_MS = 4000
   const FADE_MS    = 800
 
@@ -271,7 +271,7 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox, onIndexChange, onHeightC
       if (onIndexChange) onIndexChange(to)
       if (nextRef.current) {
         const h = measureH(nextRef.current)
-        if (h) { setContainerH(h); if (onHeightChange) onHeightChange(h) }
+        if (h) setContainerH(h)
       }
       run(to)
     }
@@ -283,7 +283,7 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox, onIndexChange, onHeightC
   if (urls.length === 1) {
     return (
       <img src={urls[0]} alt={alt} onClick={onOpenLightbox}
-        onLoad={e => { const h = measureH(e.target); if (h) { setContainerH(h); if (onHeightChange) onHeightChange(h) } }}
+        onLoad={e => { const h = measureH(e.target); if (h) setContainerH(h) }}
         style={{width:'100%',height:'auto',display:'block',borderRadius:3,border:'1px solid #ccc9c0',cursor:'zoom-in'}}/>
     )
   }
@@ -297,7 +297,7 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox, onIndexChange, onHeightC
       background:'#d8d4cc',
     }}>
       <img ref={curRef} src={urls[curIdx]} alt={alt}
-        onLoad={e => { const h = measureH(e.target); if (h && curIdx === 0) { setContainerH(h); if (onHeightChange) onHeightChange(h) } }}
+        onLoad={e => { const h = measureH(e.target); if (h && curIdx === 0) setContainerH(h) }}
         style={{
           position:'absolute', top:0, left:0, width:'100%', height:'auto',
           opacity: curOpacity,
@@ -325,8 +325,28 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
   const linkedContent = linkifyContent(article.content||'', articles||{}, article.id, onNavigate)
   const [lightbox, setLightbox] = useState(false)
   const [lightboxIdx, setLightboxIdx] = useState(0)
-  const [infoboxMinH, setInfoboxMinH] = useState(0)  // locked to largest portrait height seen
+  const [infoboxH, setInfoboxH] = useState(null)
   const isMobile = useIsMobile()
+  const infoboxWidth = 244 - 22  // infobox width minus padding
+
+  // Preload all portrait images, find the tallest natural height, lock infobox to that
+  useEffect(() => {
+    if (portraitUrls.length <= 1) return
+    let maxH = 0
+    let loaded = 0
+    portraitUrls.forEach(url => {
+      const img = new Image()
+      img.onload = () => {
+        const h = Math.round((img.naturalHeight / img.naturalWidth) * infoboxWidth)
+        if (h > maxH) maxH = h
+        loaded++
+        if (loaded === portraitUrls.length && maxH > 0) setInfoboxH(maxH)
+      }
+      img.onerror = () => { loaded++; if (loaded === portraitUrls.length && maxH > 0) setInfoboxH(maxH) }
+      img.src = url
+    })
+  }, [portraitUrls.join(',')])
+
 
   // Close lightbox on Escape
   useEffect(() => {
@@ -376,15 +396,14 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
       {hasInfo&&(
         <div style={isMobile
           ? {width:'100%',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
-          : {float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem',minHeight:infoboxMinH?infoboxMinH+'px':undefined}
+          : {float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
         }>
           <div style={{fontFamily:"'IM Fell English',serif",fontWeight:600,fontSize:'0.88rem',marginBottom:6,borderBottom:'1px solid #ccc9c0',paddingBottom:4,color:'#1b4f72'}}>{article.title}</div>
           {/* Portrait */}
-          <div style={{textAlign:'center',marginBottom:8}}>
+          <div style={{textAlign:'center',marginBottom:8,minHeight:infoboxH?infoboxH+'px':undefined}}>
             {portraitUrls.length > 0
               ? <PortraitSlideshow urls={portraitUrls} alt={article.title}
                   onIndexChange={i=>setLightboxIdx(i)}
-                  onHeightChange={h=>setInfoboxMinH(prev=>Math.max(prev,h))}
                   onOpenLightbox={()=>setLightbox(true)}/>
               : <div style={{width:'100%',height:160,background:'#d8d4cc',borderRadius:3,border:'1px solid #ccc9c0',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:4}}>
                   <span style={{fontSize:'2.8rem',color:'#a09890',lineHeight:1}}>?</span>
