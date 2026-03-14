@@ -385,7 +385,7 @@ export default function InitiativeTracker({ user, onClose }) {
   const [editingTabNameVal, setEditingTabNameVal] = useState('')
   const [addingTab, setAddingTab] = useState(false)
   const [newTabName, setNewTabName] = useState('')
-  const writing = useRef(false)
+  const writing = useRef(0)   // timestamp of last write, 0 = not writing
   const unsubStateRef = useRef(null)
   const unsubTabsRef = useRef(null)
 
@@ -400,17 +400,18 @@ export default function InitiativeTracker({ user, onClose }) {
   // Subscribe to tab list
   useEffect(() => {
     const ref = doc(db, 'initiative/tabs')
-    getDoc(ref).then(snap => {
-      if (!snap.exists()) {
-        const defaultTab = { id: uid(), name: 'Encounter 1' }
-        setDoc(ref, { tabs: [defaultTab], updatedAt: serverTimestamp() })
-      }
-    }).catch(()=>{}).finally(() => {
-      unsubTabsRef.current = onSnapshot(doc(db, 'initiative/tabs'), snap => {
+    const init = async () => {
+      try {
+        const snap = await getDoc(ref)
+        if (!snap.exists()) {
+          const defaultTab = { id: uid(), name: 'Encounter 1' }
+          await setDoc(ref, { tabs: [defaultTab], updatedAt: serverTimestamp() })
+        }
+      } catch(e) { console.error('Tab init error:', e) }
+      unsubTabsRef.current = onSnapshot(ref, snap => {
         const list = snap.exists() ? (snap.data().tabs || []) : []
         setTabs(list)
         setTabsLoaded(true)
-        // Restore from hash or default to first tab
         setActiveTabId(prev => {
           if (prev && list.find(t => t.id === prev)) return prev
           const hash = window.location.hash.replace('#initiative-', '')
@@ -423,17 +424,18 @@ export default function InitiativeTracker({ user, onClose }) {
           return chosen
         })
       }, err => { console.error('Tab list error:', err); setTabsLoaded(true) })
-    })
+    }
+    init()
     return () => { if (unsubTabsRef.current) unsubTabsRef.current() }
   }, [])
 
   // Subscribe to templates
   useEffect(() => {
     const ref = doc(db, 'initiative/templates')
-    unsubStateRef.current = onSnapshot(ref, snap => {
+    const unsub = onSnapshot(ref, snap => {
       setTemplates(snap.exists() ? (snap.data().list || []) : [])
     }, ()=>{})
-    return () => {}
+    return () => unsub()
   }, [])
 
   // Subscribe to active tab's state
@@ -442,22 +444,33 @@ export default function InitiativeTracker({ user, onClose }) {
     setLoaded(false)
     if (unsubStateRef.current) unsubStateRef.current()
     const ref = doc(db, 'initiative/tab-' + activeTabId)
-    getDoc(ref).then(snap => {
-      if (!snap.exists()) setDoc(ref, { ...BLANK_STATE, updatedAt: serverTimestamp() })
-    }).catch(()=>{}).finally(() => {
+    const init = async () => {
+      try {
+        const snap = await getDoc(ref)
+        if (!snap.exists()) {
+          await setDoc(ref, { ...BLANK_STATE, updatedAt: serverTimestamp() })
+        }
+      } catch(e) { console.error('Tab state init error:', e) }
       unsubStateRef.current = onSnapshot(ref, snap => {
-        if (writing.current) return
-        setState(snap.exists() ? snap.data() : { ...BLANK_STATE })
+        // Only skip update if we wrote within the last 500ms
+        if (writing.current && Date.now() - writing.current < 500) return
+        if (snap.exists() && !snap.data()._deleted) {
+          setState(snap.data())
+        } else {
+          setState({ ...BLANK_STATE })
+        }
         setLoaded(true)
       }, err => { console.error('State error:', err); setState({ ...BLANK_STATE }); setLoaded(true) })
-    })
+    }
+    init()
+    return () => { if (unsubStateRef.current) unsubStateRef.current() }
   }, [activeTabId])
 
   const persist = async (s) => {
     if (!activeTabId) return
-    writing.current = true
+    writing.current = Date.now()
     try { await setDoc(doc(db, 'initiative/tab-' + activeTabId), { ...s, updatedAt: serverTimestamp() }) }
-    finally { writing.current = false }
+    finally { setTimeout(() => { writing.current = 0 }, 500) }
   }
   const update = s => { setState(s); persist(s) }
 
