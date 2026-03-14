@@ -264,6 +264,10 @@ export default function Tracker({ user, onClose }) {
         if (admin) persist(initial)
       }
       setLoaded(true)
+    }, err => {
+      console.error('Tracker Firestore error:', err.code, err.message)
+      setLoaded(true)
+      setState({ _error: err.message, tabs: [] })
     })
     return unsub
   }, [])
@@ -428,6 +432,13 @@ export default function Tracker({ user, onClose }) {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
+        {loaded && state?._error && (
+          <div style={{ background: '#fff0f0', border: '1px solid #f5c6cb', borderRadius: 6, padding: '12px 16px', color: '#b44', fontSize: '0.85rem', maxWidth: 500 }}>
+            <strong>Firestore error:</strong> {state._error}
+            <div style={{ marginTop: 6, color: '#888', fontSize: '0.78rem' }}>Check that firestore rules have been deployed via <code>firebase deploy --only firestore:rules</code></div>
+          </div>
+        )}
+
         {!loaded && <div style={{ color: '#aaa', fontStyle: 'italic' }}>Loading…</div>}
 
         {loaded && !activeTabData && (
