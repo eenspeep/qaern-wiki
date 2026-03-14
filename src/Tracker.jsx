@@ -226,7 +226,217 @@ function TrackerClock({ item, editable, onChange, onDelete }) {
   )
 }
 
-// ─── Shared styles ─────────────────────────────────────────────────────────────
+// ─── Tracker Level ────────────────────────────────────────────────────────────
+// A multi-tier progress tracker. Each level has its own label, max, and description.
+// Hovering shows a tooltip with all level descriptions.
+
+function LevelTooltip({ levels, currentLevel, palette }) {
+  const pal = makePaletteFor(palette)
+  return (
+    <div style={{
+      position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 100,
+      background: '#1a1a1a', color: '#e8e4dc', borderRadius: 6,
+      padding: '10px 14px', minWidth: 220, maxWidth: 320,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+      fontFamily: "'Source Serif 4', Georgia, serif", fontSize: '0.8rem',
+      pointerEvents: 'none',
+    }}>
+      {levels.map((lv, i) => {
+        const isComplete = i < currentLevel
+        const isCurrent = i === currentLevel
+        return (
+          <div key={i} style={{ marginBottom: i < levels.length - 1 ? 8 : 0, opacity: i > currentLevel ? 0.45 : 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+              <span style={{
+                fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
+                color: isComplete ? pal.fill : isCurrent ? '#c8b87a' : '#666',
+              }}>
+                {isComplete ? '✓ ' : isCurrent ? '▶ ' : ''}Level {i + 1}
+              </span>
+              {lv.label && <span style={{ color: '#bbb', fontStyle: 'italic' }}>{lv.label}</span>}
+            </div>
+            {lv.description && (
+              <div style={{ color: '#ccc', lineHeight: 1.5, paddingLeft: 4, borderLeft: `2px solid ${isComplete ? pal.fill : isCurrent ? '#c8b87a' : '#444'}` }}>
+                {lv.description}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {/* Arrow */}
+      <div style={{ position: 'absolute', bottom: -6, left: 16, width: 10, height: 10, background: '#1a1a1a', transform: 'rotate(45deg)', borderRadius: 1 }}/>
+    </div>
+  )
+}
+
+function TrackerLevel({ item, editable, onChange, onDelete }) {
+  const pal = makePaletteFor(item.palette)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(null)
+  const [hovered, setHovered] = useState(false)
+
+  const currentLevel = item.currentLevel ?? 0
+  const levels = item.levels ?? [{ label: '', max: 100, current: 0, description: '' }]
+  const lv = levels[currentLevel] ?? levels[0]
+  const pct = lv.max > 0 ? Math.min(100, (lv.current / lv.max) * 100) : 0
+
+  const startEdit = () => { setDraft({ ...item, levels: item.levels.map(l => ({ ...l })) }); setEditing(true) }
+  const cancel = () => setEditing(false)
+  const save = () => { onChange(draft); setEditing(false) }
+
+  const updateLvCurrent = (val) => {
+    const newLevels = levels.map((l, i) => i === currentLevel ? { ...l, current: Math.max(0, Math.min(l.max, val)) } : l)
+    onChange({ ...item, levels: newLevels })
+  }
+
+  const advanceLevel = () => {
+    if (currentLevel < levels.length - 1) onChange({ ...item, currentLevel: currentLevel + 1 })
+  }
+  const regressLevel = () => {
+    if (currentLevel > 0) onChange({ ...item, currentLevel: currentLevel - 1 })
+  }
+
+  if (editing && editable) {
+    const d = draft
+    const setD = fn => setDraft(prev => fn(prev))
+    const updateDraftLevel = (i, key, val) => setD(p => ({ ...p, levels: p.levels.map((l, li) => li === i ? { ...l, [key]: val } : l) }))
+    const addLevel = () => setD(p => ({ ...p, levels: [...p.levels, { label: '', max: 100, current: 0, description: '' }] }))
+    const removeLevel = i => setD(p => ({ ...p, levels: p.levels.filter((_, li) => li !== i), currentLevel: Math.min(p.currentLevel ?? 0, p.levels.length - 2) }))
+
+    return (
+      <div style={{ border: '1px solid #ccc9c0', borderRadius: 6, padding: '12px 14px', background: '#faf9f6', marginBottom: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 12px', marginBottom: 10 }}>
+          <div>
+            <label style={lb}>Title</label>
+            <input style={inp} value={d.label} onChange={e => setD(p => ({ ...p, label: e.target.value }))} placeholder='e.g. The Open End'/>
+          </div>
+          <div>
+            <label style={lb}>Image URL (optional)</label>
+            <input style={inp} value={d.image || ''} onChange={e => setD(p => ({ ...p, image: e.target.value }))} placeholder='https://…'/>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 8 }}>
+          <label style={lb}>Colour</label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {PALETTES.map((p, i) => (
+              <div key={i} onClick={() => setD(prev => ({ ...prev, palette: i }))}
+                style={{ width: 22, height: 22, borderRadius: '50%', background: p.fill, cursor: 'pointer',
+                  border: d.palette === i ? '2px solid #222' : '2px solid transparent',
+                  boxShadow: d.palette === i ? '0 0 0 1px #888' : 'none' }}
+                title={p.label}/>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ ...lb, marginBottom: 6 }}>Levels</label>
+          {d.levels.map((lv, i) => (
+            <div key={i} style={{ border: '1px solid #e0ddd8', borderRadius: 4, padding: '8px 10px', marginBottom: 6, background: '#f4f2ee' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <span style={{ fontSize: '0.7rem', fontWeight: 700, color: pal.fill, textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>Level {i + 1}</span>
+                {d.levels.length > 1 && (
+                  <button onClick={() => removeLevel(i)} style={{ ...btnDanger, padding: '1px 6px', fontSize: '0.68rem', marginLeft: 'auto' }}>✕</button>
+                )}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px', gap: '6px 8px', marginBottom: 6 }}>
+                <div>
+                  <label style={lb}>Level Name</label>
+                  <input style={inp} value={lv.label || ''} onChange={e => updateDraftLevel(i, 'label', e.target.value)} placeholder='e.g. Repairs Complete'/>
+                </div>
+                <div>
+                  <label style={lb}>Current</label>
+                  <input style={inp} type='number' min={0} max={lv.max} value={lv.current} onChange={e => updateDraftLevel(i, 'current', Number(e.target.value))}/>
+                </div>
+                <div>
+                  <label style={lb}>Max</label>
+                  <input style={inp} type='number' min={1} value={lv.max} onChange={e => updateDraftLevel(i, 'max', Number(e.target.value))}/>
+                </div>
+              </div>
+              <div>
+                <label style={lb}>Effects / Description (shown on hover)</label>
+                <textarea style={{ ...inp, resize: 'vertical', minHeight: 48 }} value={lv.description || ''} onChange={e => updateDraftLevel(i, 'description', e.target.value)} placeholder='What does completing this level achieve?'/>
+              </div>
+            </div>
+          ))}
+          <button onClick={addLevel} style={{ ...btnSecondary, padding: '3px 10px', fontSize: '0.75rem' }}>+ Add Level</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={save} style={btnPrimary}>Save</button>
+          <button onClick={cancel} style={btnSecondary}>Cancel</button>
+          {onDelete && <button onClick={onDelete} style={btnDanger}>Delete</button>}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 6, background: '#faf9f6', border: '1px solid #e8e5e0', display: 'flex', alignItems: 'center', gap: 12 }}>
+      {item.image && (
+        <img src={item.image} alt='' style={{ width: 40, height: 40, borderRadius: 4, objectFit: 'cover', flexShrink: 0, border: '1px solid #ddd' }}/>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {/* Title + level badge + tooltip trigger */}
+        <div style={{ position: 'relative', display: 'inline-block' }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4, cursor: 'help' }}>
+            <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '0.92rem', color: '#222', fontWeight: 600 }}>{item.label}</span>
+            <span style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
+              background: pal.fill, color: '#fff', padding: '1px 6px', borderRadius: 10 }}>
+              Lv {currentLevel + 1}{lv.label ? ` · ${lv.label}` : ''}
+            </span>
+            <span style={{ fontSize: '0.68rem', color: '#aaa' }}>ⓘ</span>
+          </div>
+          {hovered && levels.some(l => l.description) && (
+            <LevelTooltip levels={levels} currentLevel={currentLevel} palette={item.palette}/>
+          )}
+        </div>
+
+        {/* Progress bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+          <span style={{ fontSize: '0.72rem', color: '#888' }}>
+            {lv.current.toLocaleString()} / {lv.max.toLocaleString()}
+            <span style={{ marginLeft: 4, color: '#bbb' }}>({pct.toFixed(1)}%)</span>
+          </span>
+          <span style={{ fontSize: '0.68rem', color: '#aaa' }}>{currentLevel + 1} of {levels.length} levels</span>
+        </div>
+        <div style={{ height: 8, borderRadius: 4, background: pal.track, overflow: 'hidden', marginBottom: 6 }}>
+          <div style={{ height: '100%', width: pct + '%', background: pal.fill, borderRadius: 4, transition: 'width 0.3s' }}/>
+        </div>
+
+        {/* Level pip indicators */}
+        <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+          {levels.map((_, i) => (
+            <div key={i} style={{ width: 8, height: 8, borderRadius: '50%',
+              background: i < currentLevel ? pal.fill : i === currentLevel ? pal.fill : pal.track,
+              opacity: i < currentLevel ? 1 : i === currentLevel ? 0.6 : 0.3,
+              border: i === currentLevel ? `1px solid ${pal.fill}` : '1px solid transparent',
+            }}/>
+          ))}
+        </div>
+
+        {editable && (
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input type='range' min={0} max={lv.max} value={lv.current}
+              onChange={e => updateLvCurrent(Number(e.target.value))}
+              style={{ flex: 1, accentColor: pal.fill }}/>
+            {currentLevel > 0 && (
+              <button onClick={regressLevel} style={{ ...btnSecondary, padding: '2px 7px', fontSize: '0.72rem' }} title='Previous level'>◀</button>
+            )}
+            {currentLevel < levels.length - 1 && (
+              <button onClick={advanceLevel} style={{ ...btnSecondary, padding: '2px 7px', fontSize: '0.72rem' }} title='Next level'>▶</button>
+            )}
+            <button onClick={startEdit} style={{ ...btnSecondary, padding: '2px 8px', fontSize: '0.72rem' }}>✎ Edit</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
 const lb = { display: 'block', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 3 }
 const inp = { width: '100%', padding: '5px 8px', border: '1px solid #ccc9c0', borderRadius: 3, fontSize: '0.83rem', fontFamily: "'Source Serif 4', Georgia, serif", background: '#f8f7f4', color: '#222', boxSizing: 'border-box' }
 const btnPrimary = { padding: '5px 14px', border: 'none', borderRadius: 3, background: '#1b4f72', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontFamily: "'Source Serif 4', Georgia, serif" }
@@ -353,7 +563,13 @@ export default function Tracker({ user, onClose }) {
     if (!tab) return
     const newItem = type === 'bar'
       ? { id: uid(), type: 'bar', label: 'New Tracker', current: 0, max: 100, palette: 0, image: '' }
-      : { id: uid(), type: 'clock', label: 'New Clock', segments: 6, filled: 0, palette: 0, image: '' }
+      : type === 'clock'
+      ? { id: uid(), type: 'clock', label: 'New Clock', segments: 6, filled: 0, palette: 0, image: '' }
+      : { id: uid(), type: 'level', label: 'New Institution', palette: 0, image: '', currentLevel: 0,
+          levels: [
+            { label: 'Repair', max: 100, current: 0, description: '' },
+            { label: 'Upgrade', max: 100, current: 0, description: '' },
+          ] }
     updateItems(tabId, [...tab.items, newItem])
   }
 
@@ -475,7 +691,11 @@ export default function Tracker({ user, onClose }) {
                       ? <TrackerBar item={item} editable={admin}
                           onChange={newItem => updateItem(activeTab, item.id, newItem)}
                           onDelete={() => deleteItem(activeTab, item.id)}/>
-                      : <TrackerClock item={item} editable={admin}
+                      : item.type === 'clock'
+                      ? <TrackerClock item={item} editable={admin}
+                          onChange={newItem => updateItem(activeTab, item.id, newItem)}
+                          onDelete={() => deleteItem(activeTab, item.id)}/>
+                      : <TrackerLevel item={item} editable={admin}
                           onChange={newItem => updateItem(activeTab, item.id, newItem)}
                           onDelete={() => deleteItem(activeTab, item.id)}/>
                     }
@@ -486,7 +706,7 @@ export default function Tracker({ user, onClose }) {
 
             {/* Add buttons — admin only */}
             {admin && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                 <button onClick={() => addItem(activeTab, 'bar')}
                   style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: '0.85rem' }}>▬</span> Add Tracker Bar
@@ -494,6 +714,10 @@ export default function Tracker({ user, onClose }) {
                 <button onClick={() => addItem(activeTab, 'clock')}
                   style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ fontSize: '0.85rem' }}>◕</span> Add Clock
+                </button>
+                <button onClick={() => addItem(activeTab, 'level')}
+                  style={{ ...btnSecondary, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: '0.85rem' }}>◈</span> Add Level Tracker
                 </button>
               </div>
             )}
