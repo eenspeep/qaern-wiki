@@ -252,29 +252,18 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
     if (urls.length <= 1) return
 
     const run = async (from) => {
-      // Hold current photo
       await new Promise(r => setTimeout(r, DISPLAY_MS))
       if (!alive.current) return
-
       const to = (from + 1) % urls.length
-
-      // Mount next image invisibly (no transition yet)
       setNextIdx(to)
       setCurOpacity(1)
       setNextOpacity(0)
-
-      // Wait one frame so the browser paints the next image at opacity:0
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
       if (!alive.current) return
-
-      // Now trigger both transitions in the same frame
       setCurOpacity(0)
       setNextOpacity(1)
-
       await new Promise(r => setTimeout(r, FADE_MS))
       if (!alive.current) return
-
-      // Commit swap, update height
       setCurIdx(to)
       setNextIdx(null)
       setCurOpacity(1)
@@ -283,7 +272,6 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
         const h = measureH(nextRef.current)
         if (h) setContainerH(h)
       }
-
       run(to)
     }
 
@@ -307,7 +295,6 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
       transition: `height ${FADE_MS}ms ease-in-out`,
       background:'#d8d4cc',
     }}>
-      {/* Current image */}
       <img ref={curRef} src={urls[curIdx]} alt={alt}
         onLoad={e => { const h = measureH(e.target); if (h && curIdx === 0) setContainerH(h) }}
         style={{
@@ -315,7 +302,6 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
           opacity: curOpacity,
           transition: nextIdx !== null ? `opacity ${FADE_MS}ms ease-in-out` : 'none',
         }}/>
-      {/* Next image — only mounted during crossfade */}
       {nextIdx !== null && (
         <img ref={nextRef} src={urls[nextIdx]} alt={alt}
           style={{
@@ -324,20 +310,14 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
             transition: `opacity ${FADE_MS}ms ease-in-out`,
           }}/>
       )}
-      {/* Invisible spacer keeps container height in flow */}
       <img src={urls[curIdx]} alt='' aria-hidden='true'
         style={{width:'100%',height:'auto',display:'block',visibility:'hidden'}}/>
     </div>
   )
 }
 
-
-  // Parse portrait field — supports comma-separated URLs for multi-portrait slideshow
-  const portraitUrls = (() => {
-    const raw = article.portrait || ''
-    const urls = raw.split(',').map(s => s.trim()).filter(Boolean)
-    return urls
-  })()
+function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavigate }) {
+  const portraitUrls = (article.portrait||'').split(',').map(s=>s.trim()).filter(Boolean)
   const hasInfo = (article.infobox && Object.keys(article.infobox).length > 0) || portraitUrls.length > 0
   const readers = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&!u.editing)
   const editors = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&u.editing)
@@ -366,7 +346,7 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
         <div onClick={()=>setLightbox(false)}
           style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',cursor:'zoom-out'}}>
           <div onClick={e=>e.stopPropagation()} style={{position:'relative',maxWidth:'90vw',maxHeight:'90vh',display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
-            <img src={portraitUrls[lightboxIdx] || portraitUrls[0]} alt={article.title}
+            <img src={portraitUrls[lightboxIdx]||portraitUrls[0]} alt={article.title}
               style={{maxWidth:'90vw',maxHeight:'82vh',objectFit:'contain',borderRadius:4,boxShadow:'0 8px 48px rgba(0,0,0,0.6)'}}/>
             <div style={{color:'#ccc',fontSize:'0.82rem',fontStyle:'italic',fontFamily:"'Source Serif 4',Georgia,serif"}}>{article.title}</div>
             <button onClick={()=>setLightbox(false)}
@@ -397,13 +377,11 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
           : {float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
         }>
           <div style={{fontFamily:"'IM Fell English',serif",fontWeight:600,fontSize:'0.88rem',marginBottom:6,borderBottom:'1px solid #ccc9c0',paddingBottom:4,color:'#1b4f72'}}>{article.title}</div>
-          {/* Portrait — single or multi-portrait crossfade */}
+          {/* Portrait */}
           <div style={{textAlign:'center',marginBottom:8}}>
             {portraitUrls.length > 0
-              ? <PortraitSlideshow
-                  urls={portraitUrls}
-                  alt={article.title}
-                  onOpenLightbox={()=>{ setLightboxIdx(0); setLightbox(true) }}/>
+              ? <PortraitSlideshow urls={portraitUrls} alt={article.title}
+                  onOpenLightbox={()=>{setLightboxIdx(0);setLightbox(true)}}/>
               : <div style={{width:'100%',height:160,background:'#d8d4cc',borderRadius:3,border:'1px solid #ccc9c0',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:4}}>
                   <span style={{fontSize:'2.8rem',color:'#a09890',lineHeight:1}}>?</span>
                   <span style={{fontSize:'0.68rem',color:'#a09890',letterSpacing:'0.05em'}}>No portrait</span>
@@ -507,7 +485,7 @@ function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categori
                 <input style={{...inp,marginBottom:0,flex:1}} value={draft.portrait||''} onChange={e=>setDraft(p=>({...p,portrait:e.target.value}))} placeholder='https://… or url1, url2, url3'/>
                 <div style={{display:'flex',gap:4,flexShrink:0}}>
                   {(draft.portrait||'').split(',').map(s=>s.trim()).filter(Boolean).slice(0,3).map((url,i)=>(
-                    <div key={i} style={{width:44,height:44,borderRadius:3,border:'1px solid #ccc9c0',overflow:'hidden',background:'#d8d4cc',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                    <div key={i} style={{width:44,height:44,borderRadius:3,border:'1px solid #ccc9c0',overflow:'hidden',background:'#d8d4cc',flexShrink:0}}>
                       <img src={url} alt='' style={{width:'100%',height:'100%',objectFit:'cover'}}/>
                     </div>
                   ))}
