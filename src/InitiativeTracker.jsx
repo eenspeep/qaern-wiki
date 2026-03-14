@@ -34,6 +34,7 @@ const BLANK_MONSTER = (name, hp) => ({
   hp: hp || 10,
   hpPer: 4,          // minion hp per member
   count: 4,          // minion count
+  triggered: false,
   // leader extras
   extraTurns: 0,
   villain1: false, villain2: false, villain3: false,
@@ -101,6 +102,18 @@ function MonsterRow({ monster, admin, onUpdate, onRemove }) {
             style={{ background: 'none', border: 'none', cursor: 'pointer',
               fontSize: '0.65rem', color: '#ccc', padding: '0 1px' }}>✕</button>
         </>}
+      </div>
+
+      {/* Triggered action */}
+      <div style={{ marginBottom: 4 }}>
+        <label style={{ display:'flex', alignItems:'center', gap:5, cursor: admin?'pointer':'default',
+          fontSize:'0.7rem', color: monster.triggered?'#7a2020':'#999', userSelect:'none' }}>
+          <input type='checkbox' checked={monster.triggered||false}
+            onChange={e => admin && upd({ triggered: e.target.checked })}
+            disabled={!admin}
+            style={{ accentColor: MONSTER_COLOR, width:12, height:12 }}/>
+          Triggered Action
+        </label>
       </div>
 
       {/* HP section */}
@@ -197,10 +210,11 @@ function MonsterGroupCard({ group, admin, phase, onUpdate, onRemove, onEndTurn }
 
   return (
     <div style={{ borderRadius: 6, border: `2px solid ${group.turnTaken ? '#ccc' : '#e0c0c0'}`,
-      background: group.turnTaken ? '#f4f0ee' : '#fff8f6',
+      background: group.turnTaken ? '#e8e4e0' : '#fff8f6',
       padding: '10px 12px', marginBottom: 8,
       boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-      opacity: allDead ? 0.5 : 1 }}>
+      opacity: allDead ? 0.4 : group.turnTaken ? 0.55 : 1,
+      transition: 'opacity 0.2s, background 0.2s' }}>
 
       {/* Group name */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
@@ -269,10 +283,11 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
 
   return (
     <div style={{ borderRadius:6, border:`2px solid ${player.turnTaken ? '#ccc' : '#ccc9c0'}`,
-      background: player.turnTaken ? '#f0f0f0' : '#faf9f6',
+      background: player.turnTaken ? '#e8e8e8' : '#faf9f6',
       padding:'10px 12px', marginBottom:8,
       boxShadow:'0 1px 4px rgba(0,0,0,0.06)',
-      opacity: player.dead ? 0.4 : 1 }}>
+      opacity: player.dead ? 0.4 : player.turnTaken ? 0.55 : 1,
+      transition: 'opacity 0.2s, background 0.2s' }}>
 
       <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
         <span style={{ fontFamily:"'IM Fell English',serif", fontSize:'0.95rem',
@@ -315,116 +330,254 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
   )
 }
 
+// ─── Template modal ───────────────────────────────────────────────────────────
+function TemplateModal({ templates, onLoad, onDelete, onClose }) {
+  const btn = (label, onClick, col='#3a3a5a') => (
+    <button onClick={onClick} style={{ padding:'4px 10px', border:`1px solid ${col}`, borderRadius:3,
+      background:'transparent', color: col==='#b44'?'#b44':'#aaa', cursor:'pointer',
+      fontSize:'0.75rem', fontFamily:"'Source Serif 4',Georgia,serif" }}>{label}</button>
+  )
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:400,
+      display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'#1e1e32', border:'1px solid #3a3a5a',
+        borderRadius:8, padding:'1.2rem', width:340, fontFamily:"'Source Serif 4',Georgia,serif" }}>
+        <div style={{ fontFamily:"'IM Fell English',serif", color:'#c8b87a', fontSize:'1rem', marginBottom:'1rem' }}>
+          Load Template
+        </div>
+        {templates.length === 0 && (
+          <div style={{ color:'#666', fontStyle:'italic', fontSize:'0.82rem', marginBottom:'1rem' }}>
+            No templates saved yet.
+          </div>
+        )}
+        {templates.map(t => (
+          <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8,
+            padding:'8px 10px', background:'#252540', borderRadius:4 }}>
+            <span style={{ flex:1, fontSize:'0.85rem', color:'#c8c0b0' }}>{t.name}</span>
+            {btn('Load', () => onLoad(t), '#4a9ac8')}
+            {btn('✕', () => onDelete(t.id), '#b44')}
+          </div>
+        ))}
+        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:8 }}>
+          {btn('Close', onClose)}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function InitiativeTracker({ user, onClose }) {
   const admin = isAdmin(user)
-  const [state, setState] = useState(null)
+
+  // Tab list lives at initiative/tabs
+  const [tabs, setTabs] = useState([])           // [{id, name}]
+  const [activeTabId, setActiveTabId] = useState(null)
+  const [state, setState] = useState(null)       // current tab's battle state
+  const [templates, setTemplates] = useState([]) // [{id, name, state}]
   const [loaded, setLoaded] = useState(false)
+  const [tabsLoaded, setTabsLoaded] = useState(false)
   const [newPlayerName, setNewPlayerName] = useState('')
   const [newGroupName, setNewGroupName] = useState('')
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [editingTabName, setEditingTabName] = useState(null)
+  const [editingTabNameVal, setEditingTabNameVal] = useState('')
+  const [addingTab, setAddingTab] = useState(false)
+  const [newTabName, setNewTabName] = useState('')
   const writing = useRef(false)
-  const unsubRef = useRef(null)
+  const unsubStateRef = useRef(null)
+  const unsubTabsRef = useRef(null)
 
+  const tabSlug = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+
+  const setActiveTabWithHash = (tabId, tabList) => {
+    setActiveTabId(tabId)
+    const tab = (tabList || tabs).find(t => t.id === tabId)
+    if (tab) history.replaceState(null, '', '#initiative-' + tabSlug(tab.name))
+  }
+
+  // Subscribe to tab list
   useEffect(() => {
-    const ref = doc(db, INIT_DOC)
+    const ref = doc(db, 'initiative/tabs')
     getDoc(ref).then(snap => {
-      if (!snap.exists()) return setDoc(ref, { ...BLANK_STATE, updatedAt: serverTimestamp() })
+      if (!snap.exists()) {
+        const defaultTab = { id: uid(), name: 'Encounter 1' }
+        setDoc(ref, { tabs: [defaultTab], updatedAt: serverTimestamp() })
+      }
     }).catch(()=>{}).finally(() => {
-      unsubRef.current = onSnapshot(ref, snap => {
-        if (writing.current) return
-        setState(snap.exists() ? snap.data() : BLANK_STATE)
-        setLoaded(true)
-      }, err => { console.error('Initiative error:', err); setState(BLANK_STATE); setLoaded(true) })
+      unsubTabsRef.current = onSnapshot(doc(db, 'initiative/tabs'), snap => {
+        const list = snap.exists() ? (snap.data().tabs || []) : []
+        setTabs(list)
+        setTabsLoaded(true)
+        // Restore from hash or default to first tab
+        setActiveTabId(prev => {
+          if (prev && list.find(t => t.id === prev)) return prev
+          const hash = window.location.hash.replace('#initiative-', '')
+          const byHash = list.find(t => tabSlug(t.name) === hash)
+          const chosen = byHash?.id || list[0]?.id || null
+          if (chosen) {
+            const tab = list.find(t => t.id === chosen)
+            if (tab) history.replaceState(null, '', '#initiative-' + tabSlug(tab.name))
+          }
+          return chosen
+        })
+      }, err => { console.error('Tab list error:', err); setTabsLoaded(true) })
     })
-    return () => { if (unsubRef.current) unsubRef.current() }
+    return () => { if (unsubTabsRef.current) unsubTabsRef.current() }
   }, [])
 
+  // Subscribe to templates
+  useEffect(() => {
+    const ref = doc(db, 'initiative/templates')
+    unsubStateRef.current = onSnapshot(ref, snap => {
+      setTemplates(snap.exists() ? (snap.data().list || []) : [])
+    }, ()=>{})
+    return () => {}
+  }, [])
+
+  // Subscribe to active tab's state
+  useEffect(() => {
+    if (!activeTabId) { setState(null); setLoaded(false); return }
+    setLoaded(false)
+    if (unsubStateRef.current) unsubStateRef.current()
+    const ref = doc(db, 'initiative/tab-' + activeTabId)
+    getDoc(ref).then(snap => {
+      if (!snap.exists()) setDoc(ref, { ...BLANK_STATE, updatedAt: serverTimestamp() })
+    }).catch(()=>{}).finally(() => {
+      unsubStateRef.current = onSnapshot(ref, snap => {
+        if (writing.current) return
+        setState(snap.exists() ? snap.data() : { ...BLANK_STATE })
+        setLoaded(true)
+      }, err => { console.error('State error:', err); setState({ ...BLANK_STATE }); setLoaded(true) })
+    })
+  }, [activeTabId])
+
   const persist = async (s) => {
+    if (!activeTabId) return
     writing.current = true
-    try { await setDoc(doc(db, INIT_DOC), { ...s, updatedAt: serverTimestamp() }) }
+    try { await setDoc(doc(db, 'initiative/tab-' + activeTabId), { ...s, updatedAt: serverTimestamp() }) }
     finally { writing.current = false }
   }
   const update = s => { setState(s); persist(s) }
 
-  if (!loaded || !state) return (
+  const persistTabs = async (newTabs) => {
+    await setDoc(doc(db, 'initiative/tabs'), { tabs: newTabs, updatedAt: serverTimestamp() })
+  }
+
+  const addTab = () => {
+    const name = newTabName.trim() || `Encounter ${tabs.length + 1}`
+    const newTab = { id: uid(), name }
+    const newTabs = [...tabs, newTab]
+    setTabs(newTabs)
+    persistTabs(newTabs)
+    setActiveTabWithHash(newTab.id, newTabs)
+    setNewTabName(''); setAddingTab(false)
+  }
+
+  const renameTab = (tabId) => {
+    const name = editingTabNameVal.trim()
+    if (!name) { setEditingTabName(null); return }
+    const newTabs = tabs.map(t => t.id === tabId ? { ...t, name } : t)
+    setTabs(newTabs)
+    persistTabs(newTabs)
+    setEditingTabName(null)
+    history.replaceState(null, '', '#initiative-' + tabSlug(name))
+  }
+
+  const deleteTab = async (tabId) => {
+    if (!confirm('Delete this encounter tab?')) return
+    const newTabs = tabs.filter(t => t.id !== tabId)
+    setTabs(newTabs)
+    persistTabs(newTabs)
+    // Also delete the state doc
+    try { await setDoc(doc(db, 'initiative/tab-' + tabId), { _deleted: true }) } catch {}
+    if (activeTabId === tabId) {
+      const next = newTabs[0]
+      if (next) setActiveTabWithHash(next.id, newTabs)
+      else setActiveTabId(null)
+    }
+  }
+
+  const saveAsTemplate = async () => {
+    const name = prompt('Template name:', tabs.find(t=>t.id===activeTabId)?.name || 'Encounter')
+    if (!name) return
+    // Strip combat state but keep roster
+    const templateState = {
+      ...state,
+      round: 1, phase: 'players',
+      players: state.players.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, dead:false })),
+      monsterGroups: state.monsterGroups.map(g => ({ ...g, turnTaken:false,
+        monsters: g.monsters.map(m => ({ ...m, hp:m.maxHp, triggered:false, dead:false,
+          ...(m.tier==='minion' ? {hp:(m.count||1)*(m.hpPer||1)} : {}) })) })),
+    }
+    const newTemplate = { id: uid(), name, state: templateState }
+    const newList = [...templates, newTemplate]
+    await setDoc(doc(db, 'initiative/templates'), { list: newList, updatedAt: serverTimestamp() })
+  }
+
+  const loadTemplate = (template) => {
+    if (!confirm(`Load template "${template.name}"? This replaces the current encounter.`)) return
+    update({ ...template.state, round: 1, phase: 'players' })
+    setShowTemplates(false)
+  }
+
+  const deleteTemplate = async (templateId) => {
+    const newList = templates.filter(t => t.id !== templateId)
+    await setDoc(doc(db, 'initiative/templates'), { list: newList, updatedAt: serverTimestamp() })
+  }
+
+  if (!tabsLoaded) return (
     <div style={{ position:'fixed', inset:0, zIndex:300, background:'#1a1a2a',
       display:'flex', alignItems:'center', justifyContent:'center',
-      color:'#888', fontStyle:'italic', fontFamily:"'Source Serif 4',Georgia,serif" }}>
-      Loading…
-    </div>
+      color:'#888', fontStyle:'italic', fontFamily:"'Source Serif 4',Georgia,serif" }}>Loading…</div>
   )
 
-  const { round, phase, players, monsterGroups } = state
-
-  // ── Turn logic ───────────────────────────────────────────────────────────────
-  // Check if all active entities on the current side have taken their turn
+  const { round, phase, players, monsterGroups } = state || BLANK_STATE
   const allPlayersDone = players.filter(p=>!p.dead).every(p=>p.turnTaken)
   const allMonstersDone = monsterGroups.every(g=>g.turnTaken)
 
   const playerEndTurn = (playerId) => {
-    // Mark this player done, refresh their non-triggered actions, then switch to monsters
     const newPlayers = players.map(p =>
-      p.id === playerId
-        ? { ...p, turnTaken: true, main: false, maneuver: false, move: false }
-        : p
+      p.id === playerId ? { ...p, turnTaken:true, main:false, maneuver:false, move:false } : p
     )
-    // Check if all players are done after this
-    const allDone = newPlayers.filter(p => !p.dead).every(p => p.turnTaken)
-    if (allDone && monsterGroups.every(g => g.turnTaken)) {
-      // Everyone done — new round
-      const newRoundPlayers = newPlayers.map(p => ({
-        ...p, turnTaken: false, triggered: false, main: false, maneuver: false, move: false
-      }))
-      const resetGroups = monsterGroups.map(g => ({ ...g, turnTaken: false }))
-      update({ ...state, round: round + 1, phase: 'players', players: newRoundPlayers, monsterGroups: resetGroups })
+    const allDone = newPlayers.filter(p=>!p.dead).every(p=>p.turnTaken)
+    if (allDone && monsterGroups.every(g=>g.turnTaken)) {
+      const newRoundPlayers = newPlayers.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false }))
+      const resetGroups = monsterGroups.map(g => ({ ...g, turnTaken:false, monsters:g.monsters.map(m=>({...m,triggered:false})) }))
+      update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups })
     } else {
-      // Switch to monsters
-      update({ ...state, phase: 'monsters', players: newPlayers })
+      update({ ...state, phase:'monsters', players:newPlayers })
     }
   }
 
   const monsterGroupEndTurn = (groupId) => {
-    const newGroups = monsterGroups.map(g =>
-      g.id === groupId ? { ...g, turnTaken: true } : g
-    )
-    // Check if all players and monsters are done
-    const allPlayersDone = players.filter(p => !p.dead).every(p => p.turnTaken)
-    const allMonstersDone = newGroups.every(g => g.turnTaken)
-    if (allPlayersDone && allMonstersDone) {
-      // Everyone done — new round
-      const newRoundPlayers = players.map(p => ({
-        ...p, turnTaken: false, triggered: false, main: false, maneuver: false, move: false
-      }))
-      const resetGroups = newGroups.map(g => ({ ...g, turnTaken: false }))
-      update({ ...state, round: round + 1, phase: 'players', players: newRoundPlayers, monsterGroups: resetGroups })
+    const newGroups = monsterGroups.map(g => g.id===groupId ? { ...g, turnTaken:true } : g)
+    const allPDone = players.filter(p=>!p.dead).every(p=>p.turnTaken)
+    const allMDone = newGroups.every(g=>g.turnTaken)
+    if (allPDone && allMDone) {
+      const newRoundPlayers = players.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false }))
+      const resetGroups = newGroups.map(g => ({ ...g, turnTaken:false, monsters:g.monsters.map(m=>({...m,triggered:false})) }))
+      update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups })
     } else {
-      // Switch to players
-      update({ ...state, phase: 'players', monsterGroups: newGroups })
+      update({ ...state, phase:'players', monsterGroups:newGroups })
     }
   }
 
-  const updatePlayer = upd => update({ ...state, players: players.map(p => p.id===upd.id ? upd : p) })
-  const removePlayer = id => update({ ...state, players: players.filter(p => p.id!==id) })
-  const addPlayer = () => {
-    if (!newPlayerName.trim()) return
-    update({ ...state, players: [...players, BLANK_PLAYER(newPlayerName.trim())] })
-    setNewPlayerName('')
-  }
-
-  const updateGroup = upd => update({ ...state, monsterGroups: monsterGroups.map(g => g.id===upd.id ? upd : g) })
-  const removeGroup = id => update({ ...state, monsterGroups: monsterGroups.filter(g => g.id!==id) })
-  const addGroup = () => {
-    if (!newGroupName.trim()) return
-    update({ ...state, monsterGroups: [...monsterGroups, BLANK_GROUP(newGroupName.trim())] })
-    setNewGroupName('')
-  }
-
+  const updatePlayer = upd => update({ ...state, players:players.map(p=>p.id===upd.id?upd:p) })
+  const removePlayer = id => update({ ...state, players:players.filter(p=>p.id!==id) })
+  const addPlayer = () => { if(!newPlayerName.trim())return; update({...state,players:[...players,BLANK_PLAYER(newPlayerName.trim())]}); setNewPlayerName('') }
+  const updateGroup = upd => update({ ...state, monsterGroups:monsterGroups.map(g=>g.id===upd.id?upd:g) })
+  const removeGroup = id => update({ ...state, monsterGroups:monsterGroups.filter(g=>g.id!==id) })
+  const addGroup = () => { if(!newGroupName.trim())return; update({...state,monsterGroups:[...monsterGroups,BLANK_GROUP(newGroupName.trim())]}); setNewGroupName('') }
   const resetCombat = () => {
-    if (!confirm('Reset initiative? This clears all monsters and resets all turns.')) return
-    update({ ...BLANK_STATE,
-      players: players.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, dead:false }))
-    })
+    if(!confirm('Reset initiative? Clears monsters and resets all turns.'))return
+    update({ ...BLANK_STATE, players:players.map(p=>({...p,turnTaken:false,triggered:false,main:false,maneuver:false,move:false,dead:false})) })
   }
+
+  const btnStyle = (col='#3a3a5a') => ({ padding:'5px 10px', border:`1px solid ${col}`, borderRadius:3,
+    background:'transparent', color:'#aaa', cursor:'pointer', fontSize:'0.78rem',
+    fontFamily:"'Source Serif 4',Georgia,serif" })
 
   return (
     <div style={{ position:'fixed', inset:0, zIndex:300, background:'#1a1a2a',
@@ -432,115 +585,156 @@ export default function InitiativeTracker({ user, onClose }) {
 
       {/* Header */}
       <div style={{ background:'#12121e', borderBottom:'1px solid #2a2a4a',
-        padding:'0 1.5rem', height:50, display:'flex', alignItems:'center', gap:'1rem', flexShrink:0 }}>
-        <span style={{ fontFamily:"'IM Fell English',serif", fontSize:'1.1rem', color:'#c8b87a' }}>Initiative</span>
-
-        {/* Round counter */}
-        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-          {admin && <button onClick={() => update({...state, round:Math.max(1,round-1)})}
-            style={{ background:'none', border:'1px solid #3a3a5a', borderRadius:3,
-              color:'#888', cursor:'pointer', fontSize:'0.75rem', padding:'2px 6px' }}>−</button>}
-          <span style={{ color:'#c8b87a', fontSize:'0.85rem', fontWeight:600,
-            background:'#2a2a3e', padding:'3px 12px', borderRadius:4, border:'1px solid #3a3a5a' }}>
-            Round {round}
-          </span>
-          {admin && <button onClick={() => update({...state, round:round+1})}
-            style={{ background:'none', border:'1px solid #3a3a5a', borderRadius:3,
-              color:'#888', cursor:'pointer', fontSize:'0.75rem', padding:'2px 6px' }}>+</button>}
-        </div>
-
-        {/* Phase pill */}
-        <div style={{ display:'flex', gap:0, borderRadius:20, overflow:'hidden', border:'1px solid #3a3a5a' }}>
-          <span style={{ fontSize:'0.72rem', padding:'3px 12px',
-            background: phase==='players' ? PLAYER_COLOR : 'transparent',
-            color: phase==='players' ? '#fff' : '#555', transition:'all 0.2s' }}>Players</span>
-          <span style={{ fontSize:'0.72rem', padding:'3px 12px',
-            background: phase==='monsters' ? MONSTER_COLOR : 'transparent',
-            color: phase==='monsters' ? '#fff' : '#555', transition:'all 0.2s' }}>Monsters</span>
-        </div>
-
+        padding:'0 1.2rem', height:50, display:'flex', alignItems:'center', gap:'0.8rem', flexShrink:0 }}>
+        <span style={{ fontFamily:"'IM Fell English',serif", fontSize:'1.1rem', color:'#c8b87a', flexShrink:0 }}>Initiative</span>
+        {state && <>
+          <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+            {admin && <button onClick={()=>update({...state,round:Math.max(1,round-1)})}
+              style={{ background:'none',border:'1px solid #3a3a5a',borderRadius:3,color:'#888',cursor:'pointer',fontSize:'0.75rem',padding:'2px 6px' }}>−</button>}
+            <span style={{ color:'#c8b87a',fontSize:'0.82rem',fontWeight:600,
+              background:'#2a2a3e',padding:'3px 10px',borderRadius:4,border:'1px solid #3a3a5a' }}>
+              Round {round}
+            </span>
+            {admin && <button onClick={()=>update({...state,round:round+1})}
+              style={{ background:'none',border:'1px solid #3a3a5a',borderRadius:3,color:'#888',cursor:'pointer',fontSize:'0.75rem',padding:'2px 6px' }}>+</button>}
+          </div>
+          <div style={{ display:'flex',gap:0,borderRadius:20,overflow:'hidden',border:'1px solid #3a3a5a' }}>
+            <span style={{ fontSize:'0.7rem',padding:'3px 10px',background:phase==='players'?PLAYER_COLOR:'transparent',color:phase==='players'?'#fff':'#555',transition:'all 0.2s' }}>Players</span>
+            <span style={{ fontSize:'0.7rem',padding:'3px 10px',background:phase==='monsters'?MONSTER_COLOR:'transparent',color:phase==='monsters'?'#fff':'#555',transition:'all 0.2s' }}>Monsters</span>
+          </div>
+        </>}
         <div style={{ flex:1 }}/>
-        {admin && <button onClick={resetCombat}
-          style={{ padding:'5px 10px', border:'1px solid #3a3a5a', borderRadius:3,
-            background:'transparent', color:'#888', cursor:'pointer',
-            fontSize:'0.78rem', fontFamily:"'Source Serif 4',Georgia,serif" }}>↺ Reset</button>}
-        <button onClick={onClose}
-          style={{ padding:'5px 12px', border:'1px solid #3a3a5a', borderRadius:3,
-            background:'transparent', color:'#888', cursor:'pointer',
-            fontSize:'0.82rem', fontFamily:"'Source Serif 4',Georgia,serif" }}>← Back</button>
+        {admin && state && <>
+          <button onClick={resetCombat} style={btnStyle()}>↺ Reset</button>
+          <button onClick={saveAsTemplate} style={btnStyle('#4a9ac8')} title='Save current state as a template'>💾 Save Template</button>
+          <button onClick={()=>setShowTemplates(true)} style={btnStyle('#7a5a9a')}>📂 Load Template</button>
+        </>}
+        <button onClick={onClose} style={btnStyle()}>← Back</button>
       </div>
 
-      {/* Two columns */}
-      <div style={{ flex:1, display:'grid', gridTemplateColumns:'1fr 1fr', overflow:'hidden' }}>
-
-        {/* Players */}
-        <div style={{ borderRight:'1px solid #2a2a4a', display:'flex', flexDirection:'column', overflow:'hidden' }}>
-          <div style={{ padding:'10px 16px 6px', background:'#12121e', borderBottom:'1px solid #2a2a4a',
-            fontSize:'0.68rem', textTransform:'uppercase', letterSpacing:'0.1em', color: PLAYER_COLOR, fontWeight:700,
-            display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <span>Players</span>
-            {phase==='players' && !allPlayersDone &&
-              <span style={{ fontSize:'0.65rem', color:'#4a9ac8', fontStyle:'italic', textTransform:'none', letterSpacing:0 }}>▶ Player turn</span>}
-            {phase==='players' && allPlayersDone &&
-              <span style={{ fontSize:'0.65rem', color:'#888', fontStyle:'italic', textTransform:'none', letterSpacing:0 }}>all done</span>}
-          </div>
-          <div style={{ flex:1, overflowY:'auto', padding:'12px 14px' }}>
-            {players.map(p => (
-              <PlayerCard key={p.id} player={p} phase={phase} user={user} admin={admin}
-                onUpdate={updatePlayer}
-                onRemove={() => removePlayer(p.id)}
-                onEndTurn={() => playerEndTurn(p.id)}/>
-            ))}
-            {admin && (
-              <div style={{ display:'flex', gap:6, marginTop:8 }}>
-                <input value={newPlayerName} onChange={e=>setNewPlayerName(e.target.value)}
-                  onKeyDown={e=>e.key==='Enter'&&addPlayer()}
-                  placeholder='Add player…'
-                  style={{ flex:1, padding:'5px 8px', border:'1px solid #2a3a5a', borderRadius:3,
-                    background:'#252540', color:'#c8c0b0', fontSize:'0.82rem',
-                    fontFamily:"'Source Serif 4',Georgia,serif", outline:'none' }}/>
-                <button onClick={addPlayer}
-                  style={{ padding:'5px 10px', border:'none', borderRadius:3,
-                    background:PLAYER_COLOR, color:'#fff', cursor:'pointer', fontSize:'0.8rem' }}>+</button>
-              </div>
+      {/* Tab bar */}
+      <div style={{ background:'#16162a', borderBottom:'1px solid #2a2a4a',
+        display:'flex', alignItems:'flex-end', padding:'0 1rem', gap:2, flexShrink:0, overflowX:'auto' }}>
+        {tabs.map(tab => (
+          <div key={tab.id}
+            onClick={() => setActiveTabWithHash(tab.id)}
+            style={{ padding:'7px 16px 5px', cursor:'pointer', userSelect:'none',
+              borderRadius:'4px 4px 0 0', border:'1px solid transparent',
+              borderBottom: activeTabId===tab.id ? '1px solid #1a1a2a' : '1px solid #2a2a4a',
+              background: activeTabId===tab.id ? '#1a1a2a' : 'transparent',
+              color: activeTabId===tab.id ? '#c8b87a' : '#555',
+              fontFamily:"'IM Fell English',serif", fontSize:'0.88rem',
+              display:'flex', alignItems:'center', gap:6,
+              marginBottom: activeTabId===tab.id ? -1 : 0,
+            }}>
+            {editingTabName === tab.id && admin
+              ? <input autoFocus value={editingTabNameVal}
+                  onChange={e=>setEditingTabNameVal(e.target.value)}
+                  onBlur={()=>renameTab(tab.id)}
+                  onKeyDown={e=>{ if(e.key==='Enter')renameTab(tab.id); if(e.key==='Escape')setEditingTabName(null) }}
+                  onClick={e=>e.stopPropagation()}
+                  style={{ width:100,padding:'1px 4px',border:'1px solid #c8b87a',borderRadius:2,
+                    fontSize:'0.88rem',fontFamily:"'IM Fell English',serif",
+                    background:'#1a1a2a',color:'#c8b87a' }}/>
+              : <span onDoubleClick={()=>{ if(admin){setEditingTabName(tab.id);setEditingTabNameVal(tab.name)} }}>
+                  {tab.name}
+                </span>
+            }
+            {admin && activeTabId===tab.id && tabs.length>1 && (
+              <span onClick={e=>{e.stopPropagation();deleteTab(tab.id)}}
+                style={{ fontSize:'0.6rem',color:'#555',cursor:'pointer',lineHeight:1 }}>✕</span>
             )}
           </div>
-        </div>
-
-        {/* Monsters */}
-        <div style={{ display:'flex', flexDirection:'column', overflow:'hidden' }}>
-          <div style={{ padding:'10px 16px 6px', background:'#12121e', borderBottom:'1px solid #2a2a4a',
-            fontSize:'0.68rem', textTransform:'uppercase', letterSpacing:'0.1em', color:MONSTER_COLOR, fontWeight:700,
-            display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <span>Monsters</span>
-            {phase==='monsters' && !allMonstersDone &&
-              <span style={{ fontSize:'0.65rem', color:'#c84a4a', fontStyle:'italic', textTransform:'none', letterSpacing:0 }}>▶ Monster turn</span>}
-            {phase==='monsters' && allMonstersDone &&
-              <span style={{ fontSize:'0.65rem', color:'#888', fontStyle:'italic', textTransform:'none', letterSpacing:0 }}>all done</span>}
-          </div>
-          <div style={{ flex:1, overflowY:'auto', padding:'12px 14px' }}>
-            {monsterGroups.map(g => (
-              <MonsterGroupCard key={g.id} group={g} admin={admin} phase={phase}
-                onUpdate={updateGroup}
-                onRemove={() => removeGroup(g.id)}
-                onEndTurn={() => monsterGroupEndTurn(g.id)}/>
-            ))}
-            {admin && (
-              <div style={{ display:'flex', gap:6, marginTop:8 }}>
-                <input value={newGroupName} onChange={e=>setNewGroupName(e.target.value)}
-                  onKeyDown={e=>e.key==='Enter'&&addGroup()}
-                  placeholder='Add group (e.g. Wyldmen)…'
-                  style={{ flex:1, padding:'5px 8px', border:'1px solid #3a2a2a', borderRadius:3,
-                    background:'#252020', color:'#c8b0b0', fontSize:'0.82rem',
-                    fontFamily:"'Source Serif 4',Georgia,serif", outline:'none' }}/>
-                <button onClick={addGroup}
-                  style={{ padding:'5px 10px', border:'none', borderRadius:3,
-                    background:MONSTER_COLOR, color:'#fff', cursor:'pointer', fontSize:'0.8rem' }}>+</button>
+        ))}
+        {admin && (
+          addingTab
+            ? <div style={{ display:'flex',alignItems:'center',gap:4,padding:'5px 8px' }}>
+                <input autoFocus value={newTabName} onChange={e=>setNewTabName(e.target.value)}
+                  onKeyDown={e=>{if(e.key==='Enter')addTab();if(e.key==='Escape'){setAddingTab(false);setNewTabName('')}}}
+                  placeholder='Encounter name…'
+                  style={{ width:120,padding:'2px 6px',border:'1px solid #3a3a5a',borderRadius:3,
+                    fontSize:'0.82rem',background:'#1a1a2a',color:'#c8c0b0',fontFamily:"'Source Serif 4',Georgia,serif" }}/>
+                <button onClick={addTab} style={{ padding:'2px 7px',border:'none',borderRadius:3,background:PLAYER_COLOR,color:'#fff',cursor:'pointer',fontSize:'0.72rem' }}>+</button>
+                <button onClick={()=>{setAddingTab(false);setNewTabName('')}} style={{ padding:'2px 6px',border:'1px solid #3a3a5a',borderRadius:3,background:'none',color:'#666',cursor:'pointer',fontSize:'0.72rem' }}>✕</button>
               </div>
-            )}
-          </div>
-        </div>
+            : <button onClick={()=>setAddingTab(true)}
+                style={{ padding:'7px 12px',border:'none',background:'none',cursor:'pointer',color:'#555',fontSize:'1rem',marginBottom:2 }}>+</button>
+        )}
       </div>
+
+      {/* Content */}
+      {(!loaded || !state) ? (
+        <div style={{ flex:1,display:'flex',alignItems:'center',justifyContent:'center',
+          color:'#555',fontStyle:'italic' }}>Loading encounter…</div>
+      ) : (
+        <div style={{ flex:1,display:'grid',gridTemplateColumns:'1fr 1fr',overflow:'hidden' }}>
+          {/* Players */}
+          <div style={{ borderRight:'1px solid #2a2a4a',display:'flex',flexDirection:'column',overflow:'hidden' }}>
+            <div style={{ padding:'10px 16px 6px',background:'#12121e',borderBottom:'1px solid #2a2a4a',
+              fontSize:'0.68rem',textTransform:'uppercase',letterSpacing:'0.1em',color:PLAYER_COLOR,fontWeight:700,
+              display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+              <span>Players</span>
+              {phase==='players'&&!allPlayersDone&&<span style={{ fontSize:'0.65rem',color:'#4a9ac8',fontStyle:'italic',textTransform:'none',letterSpacing:0 }}>▶ Player turn</span>}
+              {phase==='players'&&allPlayersDone&&<span style={{ fontSize:'0.65rem',color:'#888',fontStyle:'italic',textTransform:'none',letterSpacing:0 }}>all done</span>}
+            </div>
+            <div style={{ flex:1,overflowY:'auto',padding:'12px 14px' }}>
+              {players.map(p=>(
+                <PlayerCard key={p.id} player={p} phase={phase} user={user} admin={admin}
+                  onUpdate={updatePlayer} onRemove={()=>removePlayer(p.id)} onEndTurn={()=>playerEndTurn(p.id)}/>
+              ))}
+              {admin&&(
+                <div style={{ display:'flex',gap:6,marginTop:8 }}>
+                  <input value={newPlayerName} onChange={e=>setNewPlayerName(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&addPlayer()} placeholder='Add player…'
+                    style={{ flex:1,padding:'5px 8px',border:'1px solid #2a3a5a',borderRadius:3,
+                      background:'#252540',color:'#c8c0b0',fontSize:'0.82rem',
+                      fontFamily:"'Source Serif 4',Georgia,serif",outline:'none' }}/>
+                  <button onClick={addPlayer}
+                    style={{ padding:'5px 10px',border:'none',borderRadius:3,
+                      background:PLAYER_COLOR,color:'#fff',cursor:'pointer',fontSize:'0.8rem' }}>+</button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Monsters */}
+          <div style={{ display:'flex',flexDirection:'column',overflow:'hidden' }}>
+            <div style={{ padding:'10px 16px 6px',background:'#12121e',borderBottom:'1px solid #2a2a4a',
+              fontSize:'0.68rem',textTransform:'uppercase',letterSpacing:'0.1em',color:MONSTER_COLOR,fontWeight:700,
+              display:'flex',alignItems:'center',justifyContent:'space-between' }}>
+              <span>Monsters</span>
+              {phase==='monsters'&&!allMonstersDone&&<span style={{ fontSize:'0.65rem',color:'#c84a4a',fontStyle:'italic',textTransform:'none',letterSpacing:0 }}>▶ Monster turn</span>}
+              {phase==='monsters'&&allMonstersDone&&<span style={{ fontSize:'0.65rem',color:'#888',fontStyle:'italic',textTransform:'none',letterSpacing:0 }}>all done</span>}
+            </div>
+            <div style={{ flex:1,overflowY:'auto',padding:'12px 14px' }}>
+              {monsterGroups.map(g=>(
+                <MonsterGroupCard key={g.id} group={g} admin={admin} phase={phase}
+                  onUpdate={updateGroup} onRemove={()=>removeGroup(g.id)} onEndTurn={()=>monsterGroupEndTurn(g.id)}/>
+              ))}
+              {admin&&(
+                <div style={{ display:'flex',gap:6,marginTop:8 }}>
+                  <input value={newGroupName} onChange={e=>setNewGroupName(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&addGroup()} placeholder='Add group…'
+                    style={{ flex:1,padding:'5px 8px',border:'1px solid #3a2a2a',borderRadius:3,
+                      background:'#252020',color:'#c8b0b0',fontSize:'0.82rem',
+                      fontFamily:"'Source Serif 4',Georgia,serif",outline:'none' }}/>
+                  <button onClick={addGroup}
+                    style={{ padding:'5px 10px',border:'none',borderRadius:3,
+                      background:MONSTER_COLOR,color:'#fff',cursor:'pointer',fontSize:'0.8rem' }}>+</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTemplates && (
+        <TemplateModal
+          templates={templates}
+          onLoad={loadTemplate}
+          onDelete={deleteTemplate}
+          onClose={()=>setShowTemplates(false)}/>
+      )}
     </div>
   )
 }
