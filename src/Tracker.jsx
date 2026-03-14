@@ -470,9 +470,11 @@ export default function Tracker({ user, onClose }) {
   const [editingGroupName, setEditingGroupName] = useState(null) // groupId
   const [editingGroupNameVal, setEditingGroupNameVal] = useState('')
   // Drag state
-  const [dragId, setDragId] = useState(null)
+  const [dragId, setDragId] = useState(null)         // item being dragged
   const [dragOverId, setDragOverId] = useState(null)
   const [dragOverGroup, setDragOverGroup] = useState(null)
+  const [dragGroupId, setDragGroupId] = useState(null)     // group being dragged
+  const [dragOverGroupId, setDragOverGroupId] = useState(null)
   const newTabRef = useRef(null)
 
   const setActiveTabWithHash = (tabId, tabs) => {
@@ -679,6 +681,39 @@ export default function Tracker({ user, onClose }) {
     }))
   }
 
+  // Group reorder drag handlers
+  const onGroupDragStart = (e, groupId) => {
+    setDragGroupId(groupId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.stopPropagation()
+  }
+  const onGroupDragEnd = () => { setDragGroupId(null); setDragOverGroupId(null) }
+  const onGroupHeaderDragOver = (e, groupId) => {
+    if (!dragGroupId) return  // only for group reorder, not item drops
+    e.preventDefault(); e.stopPropagation()
+    if (groupId !== dragGroupId) setDragOverGroupId(groupId)
+  }
+  const onGroupHeaderDrop = (e, targetGroupId, tabId) => {
+    if (!dragGroupId) return
+    e.preventDefault(); e.stopPropagation()
+    if (dragGroupId === targetGroupId) { setDragGroupId(null); setDragOverGroupId(null); return }
+    updateTab(tabId, t => {
+      const groups = [...t.groups]
+      const fromIdx = groups.findIndex(g => g.id === dragGroupId)
+      const toIdx = groups.findIndex(g => g.id === targetGroupId)
+      const [moved] = groups.splice(fromIdx, 1)
+      groups.splice(toIdx, 0, moved)
+      return { ...t, groups }
+    })
+    setDragGroupId(null); setDragOverGroupId(null)
+  }
+
+  // Also make onGroupDragOver ignore group drags (only for item-into-group drops)
+  const onItemIntoGroupDragOver = (e, groupId) => {
+    if (dragGroupId) return  // group reorder takes priority
+    e.preventDefault(); setDragOverGroup(groupId); setDragOverId(null)
+  }
+
   const activeTabData = state?.tabs?.find(t => t.id === activeTab)
 
   return (
@@ -751,21 +786,30 @@ export default function Tracker({ user, onClose }) {
           <div style={{ maxWidth: 580 }}>
             {(activeTabData.groups || []).map(group => {
               const collapsed = !!collapsedGroups[group.id]
-              const isGroupDropTarget = dragOverGroup === group.id
+              const isGroupDropTarget = dragOverGroup === group.id && !dragGroupId
 
               return (
                 <div key={group.id} style={{ marginBottom: 18 }}>
                   {/* Group header */}
                   <div
-                    onDragOver={e => onGroupDragOver(e, group.id)}
-                    onDrop={e => onGroupDrop(e, group.id, activeTab)}
+                    onDragOver={e => onGroupHeaderDragOver(e, group.id)}
+                    onDrop={e => onGroupHeaderDrop(e, group.id, activeTab)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 6,
                       padding: '4px 8px', marginBottom: 6,
-                      background: isGroupDropTarget ? '#ddeeff' : 'transparent',
-                      borderRadius: 4, border: isGroupDropTarget ? '1px dashed #1b4f72' : '1px solid transparent',
+                      background: isGroupDropTarget ? '#ddeeff' : dragOverGroupId === group.id ? '#e8f0e8' : 'transparent',
+                      borderRadius: 4,
+                      border: isGroupDropTarget ? '1px dashed #1b4f72' : dragOverGroupId === group.id ? '1px dashed #3a7a3a' : '1px solid transparent',
                       transition: 'background 0.1s',
                     }}>
+                    {admin && (
+                      <span
+                        draggable
+                        onDragStart={e => onGroupDragStart(e, group.id)}
+                        onDragEnd={onGroupDragEnd}
+                        title='Drag to reorder group'
+                        style={{ color: '#ccc', fontSize: '0.7rem', cursor: 'grab', flexShrink: 0, userSelect: 'none', paddingRight: 2 }}>⠿</span>
+                    )}
                     <button onClick={() => setCollapsedGroups(p => ({ ...p, [group.id]: !p[group.id] }))}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', fontSize: '0.6rem', padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>
                       {collapsed ? '▶' : '▼'}
