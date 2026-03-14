@@ -230,11 +230,15 @@ function TrackerClock({ item, editable, onChange, onDelete }) {
 // A multi-tier progress tracker. Each level has its own label, max, and description.
 // Hovering shows a tooltip with all level descriptions.
 
-function LevelTooltip({ levels, currentLevel, palette }) {
+function LevelTooltip({ levels, currentLevel, palette, mousePos }) {
   const pal = makePaletteFor(palette)
+  // Position fixed relative to mouse, flipping above if near bottom
+  const top = mousePos ? mousePos.y - 8 : 0
+  const left = mousePos ? mousePos.x : 0
   return (
     <div style={{
-      position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, zIndex: 100,
+      position: 'fixed', top, left, zIndex: 9999,
+      transform: 'translate(-20px, -100%)',
       background: '#1a1a1a', color: '#e8e4dc', borderRadius: 6,
       padding: '10px 14px', minWidth: 220, maxWidth: 320,
       boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
@@ -274,6 +278,7 @@ function TrackerLevel({ item, editable, onChange, onDelete }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(null)
   const [hovered, setHovered] = useState(false)
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
 
   const currentLevel = item.currentLevel ?? 0
   const levels = item.levels ?? [{ label: '', max: 100, current: 0, description: '' }]
@@ -378,9 +383,10 @@ function TrackerLevel({ item, editable, onChange, onDelete }) {
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         {/* Title + level badge + tooltip trigger */}
-        <div style={{ position: 'relative', display: 'inline-block' }}
+        <div style={{ display: 'inline-block' }}
           onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}>
+          onMouseLeave={() => setHovered(false)}
+          onMouseMove={e => setMousePos({ x: e.clientX, y: e.clientY })}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4, cursor: 'help' }}>
             <span style={{ fontFamily: "'IM Fell English', serif", fontSize: '0.92rem', color: '#222', fontWeight: 600 }}>{item.label}</span>
             <span style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
@@ -448,6 +454,16 @@ export default function Tracker({ user, onClose }) {
   const admin = isAdmin(user)
   const [state, setState] = useState(null)   // { tabs: [{id, name, items:[]}] }
   const [activeTab, setActiveTab] = useState(null)
+
+  // Sync active tab with URL hash (#tracker-tabname)
+  const setActiveTabWithHash = (tabId, tabs) => {
+    setActiveTab(tabId)
+    const tab = (tabs || state?.tabs || []).find(t => t.id === tabId)
+    if (tab) {
+      const slug = 'tracker-' + tab.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g,'')
+      history.replaceState(null, '', '#' + slug)
+    }
+  }
   const [loaded, setLoaded] = useState(false)
   const [addingTab, setAddingTab] = useState(false)
   const [newTabName, setNewTabName] = useState('')
@@ -461,7 +477,22 @@ export default function Tracker({ user, onClose }) {
       if (snap.exists()) {
         const data = snap.data()
         setState(data)
-        setActiveTab(prev => prev || (data.tabs?.[0]?.id || null))
+        setActiveTab(prev => {
+          if (prev) return prev
+          // Try to restore from hash
+          const hash = window.location.hash.replace('#tracker-', '')
+          const byHash = data.tabs?.find(t =>
+            t.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') === hash
+          )
+          const chosen = byHash?.id || data.tabs?.[0]?.id || null
+          if (chosen && byHash) {
+            // hash matched, keep hash as-is
+          } else if (chosen && data.tabs?.[0]) {
+            const slug = 'tracker-' + data.tabs[0].name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')
+            history.replaceState(null, '', '#' + slug)
+          }
+          return chosen
+        })
       } else {
         const initial = {
           tabs: [
@@ -470,7 +501,7 @@ export default function Tracker({ user, onClose }) {
           ]
         }
         setState(initial)
-        setActiveTab(initial.tabs[0].id)
+        setActiveTabWithHash(initial.tabs[0].id, initial.tabs)
         if (admin) persist(initial)
       }
       setLoaded(true)
@@ -537,7 +568,7 @@ export default function Tracker({ user, onClose }) {
     const newTab = { id: uid(), name, items: [] }
     const newState = { ...state, tabs: [...state.tabs, newTab] }
     update(newState)
-    setActiveTab(newTab.id)
+    setActiveTabWithHash(newTab.id, [...state.tabs, newTab])
     setNewTabName('')
     setAddingTab(false)
   }
@@ -555,7 +586,7 @@ export default function Tracker({ user, onClose }) {
     const newTabs = state.tabs.filter(t => t.id !== tabId)
     const newState = { ...state, tabs: newTabs }
     update(newState)
-    if (activeTab === tabId) setActiveTab(newTabs[0]?.id || null)
+    if (activeTab === tabId) { if (newTabs[0]) setActiveTabWithHash(newTabs[0].id, newTabs); else setActiveTab(null) }
   }
 
   const addItem = (tabId, type) => {
@@ -615,7 +646,7 @@ export default function Tracker({ user, onClose }) {
               display: 'flex', alignItems: 'center', gap: 6,
               marginBottom: activeTab === tab.id ? -1 : 0,
             }}
-            onClick={() => setActiveTab(tab.id)}>
+            onClick={() => setActiveTabWithHash(tab.id)}>
             {editingTabName === tab.id && admin
               ? <input autoFocus value={editingTabNameVal}
                   onChange={e => setEditingTabNameVal(e.target.value)}
