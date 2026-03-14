@@ -228,59 +228,56 @@ function linkifyContent(html, articles, currentId, onNavigate) {
 }
 
 // ─── Portrait Slideshow ───────────────────────────────────────────────────────
-// JS-driven crossfade: outgoing fades out while incoming fades in, never coexist.
-// Container height transitions smoothly to match each image's natural aspect ratio.
 function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
-  const DISPLAY_MS = 4000   // how long each photo is fully visible
-  const FADE_MS    = 800    // crossfade duration
+  const DISPLAY_MS = 4000
+  const FADE_MS    = 800
 
-  const [cur, setCur] = useState(0)
-  const [next, setNext] = useState(null)   // index being faded in
-  const [phase, setPhase] = useState('idle') // 'idle' | 'crossfading'
+  const [cur, setCur]         = useState(0)   // fully visible photo
+  const [next, setNext]       = useState(null) // photo fading in
+  const [fading, setFading]   = useState(false)
   const [containerH, setContainerH] = useState(null)
-  const curImgRef  = useRef(null)
-  const nextImgRef = useRef(null)
-  const timerRef   = useRef(null)
+  const imgRefs = useRef([])
 
-  // Measure image natural height relative to infobox width (244px minus padding)
   const measureH = (img) => {
     if (!img || !img.naturalWidth) return null
     const w = img.parentElement?.offsetWidth || 220
     return Math.round((img.naturalHeight / img.naturalWidth) * w)
   }
 
-  const startCrossfade = (fromIdx, toIdx) => {
-    setNext(toIdx)
-    setPhase('crossfading')
-    // After fade completes, commit
-    timerRef.current = setTimeout(() => {
-      setCur(toIdx)
-      setNext(null)
-      setPhase('idle')
-      if (nextImgRef.current) {
-        const h = measureH(nextImgRef.current)
-        if (h) setContainerH(h)
-      }
-    }, FADE_MS)
-  }
-
-  // Set initial height once first image loads
-  const onFirstLoad = (e) => {
-    const h = measureH(e.target)
-    if (h) setContainerH(h)
-  }
-
-  // Cycle timer
   useEffect(() => {
     if (urls.length <= 1) return
-    const id = setInterval(() => {
-      setCur(c => {
-        const toIdx = (c + 1) % urls.length
-        startCrossfade(c, toIdx)
-        return c  // don't change cur yet — startCrossfade will after fade
-      })
-    }, DISPLAY_MS + FADE_MS)
-    return () => { clearInterval(id); clearTimeout(timerRef.current) }
+    let cancelled = false
+
+    const cycle = async (from) => {
+      // Wait DISPLAY_MS with current photo fully visible
+      await new Promise(r => setTimeout(r, DISPLAY_MS))
+      if (cancelled) return
+
+      const to = (from + 1) % urls.length
+      setNext(to)
+      setFading(true)
+
+      // Wait for fade to complete
+      await new Promise(r => setTimeout(r, FADE_MS))
+      if (cancelled) return
+
+      // Commit — cur becomes to, reset fade state
+      setCur(to)
+      setNext(null)
+      setFading(false)
+
+      // Update container height to new image
+      const img = imgRefs.current[to]
+      if (img) {
+        const h = measureH(img)
+        if (h) setContainerH(h)
+      }
+
+      cycle(to)
+    }
+
+    cycle(0)
+    return () => { cancelled = true }
   }, [urls.length])
 
   if (urls.length === 1) {
@@ -298,24 +295,25 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox }) {
       transition: `height ${FADE_MS}ms ease-in-out`,
       background:'#d8d4cc',
     }}>
-      {/* Current image — fades out during crossfade */}
-      <img ref={curImgRef} src={urls[cur]} alt={alt} onLoad={onFirstLoad}
-        style={{
-          position:'absolute', top:0, left:0, width:'100%', height:'auto',
-          display:'block',
-          opacity: phase === 'crossfading' ? 0 : 1,
-          transition: phase === 'crossfading' ? `opacity ${FADE_MS}ms ease-in-out` : 'none',
-        }}/>
-      {/* Next image — fades in during crossfade */}
-      {next !== null && (
-        <img ref={nextImgRef} src={urls[next]} alt={alt}
-          style={{
-            position:'absolute', top:0, left:0, width:'100%', height:'auto',
-            display:'block',
-            opacity: phase === 'crossfading' ? 1 : 0,
-            transition: `opacity ${FADE_MS}ms ease-in-out`,
-          }}/>
-      )}
+      {urls.map((url, i) => {
+        const isCur  = i === cur  && next === null
+        const isFadeOut = i === cur  && fading
+        const isFadeIn  = i === next && fading
+        const visible = isCur || isFadeOut || isFadeIn
+        if (!visible) return <img key={i} ref={el => imgRefs.current[i] = el} src={url} alt={alt}
+          style={{position:'absolute',top:0,left:0,width:'100%',height:'auto',opacity:0,pointerEvents:'none'}}
+          onLoad={e => { if (i === 0) { const h = measureH(e.target); if (h) setContainerH(h) } }}/>
+        return (
+          <img key={i} ref={el => imgRefs.current[i] = el} src={url} alt={alt}
+            onLoad={e => { if (i === 0) { const h = measureH(e.target); if (h) setContainerH(h) } }}
+            style={{
+              position: i === cur && !fading ? 'relative' : 'absolute',
+              top:0, left:0, width:'100%', height:'auto', display:'block',
+              opacity: isFadeOut ? 0 : isFadeIn ? 1 : 1,
+              transition: (isFadeOut || isFadeIn) ? `opacity ${FADE_MS}ms ease-in-out` : 'none',
+            }}/>
+        )
+      })}
     </div>
   )
 }
