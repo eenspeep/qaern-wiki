@@ -16,10 +16,10 @@ function parseWikiAction(text) {
   try {
     return JSON.parse(match[1])
   } catch (e) {
-    // Try stripping any trailing comma issues
+    // Try stripping trailing comma issues
     try { return JSON.parse(match[1].replace(/,\s*}/, '}').replace(/,\s*]/, ']')) } catch {}
-    console.warn('wiki_action parse failed:', e.message, '\nRaw:', match[1])
-    return null
+    // Return a special error object so the UI can show a warning
+    return { _parseError: true, _raw: match[1].slice(0, 120), _message: e.message }
   }
 }
 
@@ -149,6 +149,24 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
       const rawText = data.content?.[0]?.text || '(No response.)'
       const action = parseWikiAction(rawText)
       const displayText = stripWikiAction(rawText)
+
+      // Check if the action block was found but failed to parse (truncated response)
+      if (action?._parseError) {
+        const assistantMsg = { role: 'assistant', text: displayText, rawText, ts: Date.now() }
+        const errorMsg = {
+          role: 'assistant',
+          text: `*The manuscript is incomplete — the ink runs off the page.* The edit was written but the action block was malformed, likely because the response was too long. Try asking Mnemovex to edit a smaller section, or break the task into parts.`,
+          ts: Date.now(),
+          isConfirmation: false,
+        }
+        const updatedDisplay = [...newDisplay, assistantMsg, errorMsg]
+        const updatedHistory = [...newHistory, { role: 'assistant', content: stripWikiAction(rawText) }]
+        setHistory(updatedHistory)
+        setMessages(updatedDisplay)
+        await saveHistory(updatedHistory, updatedDisplay)
+        setLoading(false)
+        return
+      }
 
       // For history, store the stripped version so Claude doesn't see old wiki_action blocks
       const assistantHistoryEntry = { role: 'assistant', content: stripWikiAction(rawText) }
