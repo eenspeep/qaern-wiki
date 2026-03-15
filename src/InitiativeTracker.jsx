@@ -1,4 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
+
+function useIsMobile(bp=680){
+  const [m,setM]=useState(()=>window.innerWidth<bp)
+  useEffect(()=>{const h=()=>setM(window.innerWidth<bp);window.addEventListener('resize',h);return()=>window.removeEventListener('resize',h)},[bp])
+  return m
+}
 import { doc, onSnapshot, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from './firebase'
 
@@ -307,7 +313,7 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
         </>}
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'5px 10px' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'4px 8px' }}>
         <ActionBox label='Triggered Action' checked={player.triggered}
           onChange={v => canEdit && upd({ triggered:v })} disabled={!canEdit}/>
         <ActionBox label='Main Action' checked={player.main}
@@ -370,6 +376,7 @@ function TemplateModal({ templates, onLoad, onDelete, onClose }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function InitiativeTracker({ user, onClose }) {
   const admin = isAdmin(user)
+  const isMobile = useIsMobile()
 
   // Tab list lives at initiative/tabs
   const [tabs, setTabs] = useState([])           // [{id, name}]
@@ -598,10 +605,10 @@ export default function InitiativeTracker({ user, onClose }) {
 
       {/* Header */}
       <div style={{ background:'#12121e', borderBottom:'1px solid #2a2a4a',
-        padding:'0 1.2rem', height:50, display:'flex', alignItems:'center', gap:'0.8rem', flexShrink:0 }}>
-        <span style={{ fontFamily:"'IM Fell English',serif", fontSize:'1.1rem', color:'#c8b87a', flexShrink:0 }}>Initiative</span>
+        padding:'0 0.8rem', height:isMobile?44:50, display:'flex', alignItems:'center', gap:isMobile?'0.4rem':'0.8rem', flexShrink:0 }}>
+        {!isMobile && <span style={{ fontFamily:"'IM Fell English',serif", fontSize:'1.1rem', color:'#c8b87a', flexShrink:0 }}>Initiative</span>}
         {state && <>
-          <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
             {admin && <button onClick={()=>update({...state,round:Math.max(1,round-1)})}
               style={{ background:'none',border:'1px solid #3a3a5a',borderRadius:3,color:'#888',cursor:'pointer',fontSize:'0.75rem',padding:'2px 6px' }}>−</button>}
             <span style={{ color:'#c8b87a',fontSize:'0.82rem',fontWeight:600,
@@ -612,22 +619,26 @@ export default function InitiativeTracker({ user, onClose }) {
               style={{ background:'none',border:'1px solid #3a3a5a',borderRadius:3,color:'#888',cursor:'pointer',fontSize:'0.75rem',padding:'2px 6px' }}>+</button>}
           </div>
           <div style={{ display:'flex',gap:0,borderRadius:20,overflow:'hidden',border:'1px solid #3a3a5a' }}>
-            <span style={{ fontSize:'0.7rem',padding:'3px 10px',background:phase==='players'?PLAYER_COLOR:'transparent',color:phase==='players'?'#fff':'#555',transition:'all 0.2s' }}>Players</span>
-            <span style={{ fontSize:'0.7rem',padding:'3px 10px',background:phase==='monsters'?MONSTER_COLOR:'transparent',color:phase==='monsters'?'#fff':'#555',transition:'all 0.2s' }}>Monsters</span>
+            <span style={{ fontSize:'0.7rem',padding:'3px 8px',background:phase==='players'?PLAYER_COLOR:'transparent',color:phase==='players'?'#fff':'#555',transition:'all 0.2s' }}>Players</span>
+            <span style={{ fontSize:'0.7rem',padding:'3px 8px',background:phase==='monsters'?MONSTER_COLOR:'transparent',color:phase==='monsters'?'#fff':'#555',transition:'all 0.2s' }}>Monsters</span>
           </div>
         </>}
         <div style={{ flex:1 }}/>
-        {admin && state && <>
+        {admin && state && !isMobile && <>
           <button onClick={resetCombat} style={btnStyle()}>↺ Reset</button>
-          <button onClick={saveAsTemplate} style={btnStyle('#4a9ac8')} title='Save current state as a template'>💾 Save Template</button>
-          <button onClick={()=>setShowTemplates(true)} style={btnStyle('#7a5a9a')}>📂 Load Template</button>
+          <button onClick={saveAsTemplate} style={btnStyle('#4a9ac8')} title='Save current state as a template'>💾</button>
+          <button onClick={()=>setShowTemplates(true)} style={btnStyle('#7a5a9a')}>📂</button>
         </>}
-        <button onClick={onClose} style={btnStyle()}>← Back</button>
+        {admin && state && isMobile && <>
+          <button onClick={resetCombat} style={{...btnStyle(), padding:'3px 7px', fontSize:'0.7rem'}}>↺</button>
+          <button onClick={()=>setShowTemplates(true)} style={{...btnStyle('#7a5a9a'), padding:'3px 7px', fontSize:'0.7rem'}}>📂</button>
+        </>}
+        <button onClick={onClose} style={{...btnStyle(), padding:isMobile?'3px 8px':'5px 10px'}}>← Back</button>
       </div>
 
       {/* Tab bar */}
       <div style={{ background:'#16162a', borderBottom:'1px solid #2a2a4a',
-        display:'flex', alignItems:'flex-end', padding:'0 1rem', gap:2, flexShrink:0, overflowX:'auto' }}>
+        display:'flex', alignItems:'flex-end', padding:isMobile?'0 0.5rem':'0 1rem', gap:2, flexShrink:0, overflowX:'auto' }}>
         {tabs.map(tab => (
           <div key={tab.id}
             onClick={() => setActiveTabWithHash(tab.id)}
@@ -680,9 +691,9 @@ export default function InitiativeTracker({ user, onClose }) {
         <div style={{ flex:1,display:'flex',alignItems:'center',justifyContent:'center',
           color:'#555',fontStyle:'italic' }}>Loading encounter…</div>
       ) : (
-        <div style={{ flex:1,display:'grid',gridTemplateColumns:'1fr 1fr',overflow:'hidden' }}>
+        <div style={{ flex:1,display:isMobile?'flex':'grid',flexDirection:isMobile?'column':undefined,gridTemplateColumns:isMobile?undefined:'1fr 1fr',overflow:'hidden' }}>
           {/* Players */}
-          <div style={{ borderRight:'1px solid #2a2a4a',display:'flex',flexDirection:'column',overflow:'hidden' }}>
+          <div style={{ borderRight:isMobile?'none':'1px solid #2a2a4a',borderBottom:isMobile?'2px solid #2a2a4a':'none',display:'flex',flexDirection:'column',overflow:isMobile?'visible':'hidden',flexShrink:isMobile?0:undefined }}>
             <div style={{ padding:'10px 16px 6px',background:'#12121e',borderBottom:'1px solid #2a2a4a',
               fontSize:'0.68rem',textTransform:'uppercase',letterSpacing:'0.1em',color:PLAYER_COLOR,fontWeight:700,
               display:'flex',alignItems:'center',justifyContent:'space-between' }}>
@@ -690,7 +701,7 @@ export default function InitiativeTracker({ user, onClose }) {
               {phase==='players'&&!allPlayersDone&&<span style={{ fontSize:'0.65rem',color:'#4a9ac8',fontStyle:'italic',textTransform:'none',letterSpacing:0 }}>▶ Player turn</span>}
               {phase==='players'&&allPlayersDone&&<span style={{ fontSize:'0.65rem',color:'#888',fontStyle:'italic',textTransform:'none',letterSpacing:0 }}>all done</span>}
             </div>
-            <div style={{ flex:1,overflowY:'auto',padding:'12px 14px' }}>
+            <div style={{ flex:isMobile?'none':1,overflowY:isMobile?'visible':'auto',padding:'10px 12px' }}>
               {players.map(p=>(
                 <PlayerCard key={p.id} player={p} phase={phase} user={user} admin={admin}
                   onUpdate={updatePlayer} onRemove={()=>removePlayer(p.id)} onEndTurn={()=>playerEndTurn(p.id)}/>
@@ -711,7 +722,7 @@ export default function InitiativeTracker({ user, onClose }) {
           </div>
 
           {/* Monsters */}
-          <div style={{ display:'flex',flexDirection:'column',overflow:'hidden' }}>
+          <div style={{ display:'flex',flexDirection:'column',overflow:isMobile?'visible':'hidden',flexShrink:isMobile?0:undefined }}>
             <div style={{ padding:'10px 16px 6px',background:'#12121e',borderBottom:'1px solid #2a2a4a',
               fontSize:'0.68rem',textTransform:'uppercase',letterSpacing:'0.1em',color:MONSTER_COLOR,fontWeight:700,
               display:'flex',alignItems:'center',justifyContent:'space-between' }}>
@@ -719,7 +730,7 @@ export default function InitiativeTracker({ user, onClose }) {
               {phase==='monsters'&&!allMonstersDone&&<span style={{ fontSize:'0.65rem',color:'#c84a4a',fontStyle:'italic',textTransform:'none',letterSpacing:0 }}>▶ Monster turn</span>}
               {phase==='monsters'&&allMonstersDone&&<span style={{ fontSize:'0.65rem',color:'#888',fontStyle:'italic',textTransform:'none',letterSpacing:0 }}>all done</span>}
             </div>
-            <div style={{ flex:1,overflowY:'auto',padding:'12px 14px' }}>
+            <div style={{ flex:isMobile?'none':1,overflowY:isMobile?'visible':'auto',padding:'10px 12px' }}>
               {monsterGroups.map(g=>(
                 <MonsterGroupCard key={g.id} group={g} admin={admin} phase={phase}
                   onUpdate={updateGroup} onRemove={()=>removeGroup(g.id)} onEndTurn={()=>monsterGroupEndTurn(g.id)}/>

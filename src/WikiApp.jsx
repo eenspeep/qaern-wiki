@@ -1032,6 +1032,17 @@ export default function WikiApp() {
                   </button>
               }
             </div>
+            {/* Sidebar action buttons */}
+            <div style={{borderTop:'1px solid #ccc9c0',padding:'6px 8px',display:'flex',flexDirection:'column',gap:4}}>
+              <button onClick={()=>{setCreating(true);setEditing(false);if(isMobile)setSidebarOpen(false)}}
+                style={{width:'100%',padding:'6px 8px',border:'none',borderRadius:3,background:'#1b4f72',color:'#fff',cursor:'pointer',fontSize:'0.8rem',fontFamily:"'Source Serif 4',Georgia,serif",textAlign:'left'}}>
+                ✍ New Article
+              </button>
+              <button onClick={()=>setShowChangelog(s=>!s)}
+                style={{width:'100%',padding:'5px 8px',border:'1px solid #ccc9c0',borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.78rem',fontFamily:"'Source Serif 4',Georgia,serif",color:'#666',textAlign:'left'}}>
+                📋 Changelog
+              </button>
+            </div>
           </aside>
         )}
 
@@ -1108,41 +1119,22 @@ export default function WikiApp() {
       {/* Mobile bottom toolbar */}
       {isMobile && (
         <div style={{borderTop:'1px solid #ccc9c0',background:'#f8f7f4',display:'flex',height:52,flexShrink:0}}>
-          <button onClick={()=>setShowChangelog(s=>!s)}
-            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,borderRight:'1px solid #e8e5e0'}}>
-            <span style={{fontSize:'1.1rem'}}>📋</span>
-            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Changelog</span>
-          </button>
-          <button onClick={()=>setShowTracker(true)}
-            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,borderRight:'1px solid #e8e5e0'}}>
-            <span style={{fontSize:'1.1rem'}}>📊</span>
-            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Tracker</span>
-          </button>
-          <button onClick={()=>{ setShowBulletin(true); history.replaceState(null,'','#bulletin') }}
-            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,borderRight:'1px solid #e8e5e0'}}>
-            <span style={{fontSize:'1.1rem'}}>📌</span>
-            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Bulletin</span>
-          </button>
-          <button onClick={()=>setShowInitiative(true)}
-            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
-            <span style={{fontSize:'1.1rem'}}>⚔</span>
-            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Initiative</span>
-          </button>
-          <button onClick={()=>setShowHexMap(true)}
-            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
-            <span style={{fontSize:'1.1rem'}}>🗺</span>
-            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Map</span>
-          </button>
-          <button onClick={()=>{setCreating(true);setEditing(false);setSidebarOpen(false)}}
-            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#1b4f72',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}}>
-            <span style={{fontSize:'1.1rem'}}>✍</span>
-            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>New Article</span>
-          </button>
-          <button onClick={()=>setSidebarOpen(s=>!s)}
-            style={{flex:1,border:'none',background:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,borderLeft:'1px solid #e8e5e0'}}>
-            <span style={{fontSize:'1.1rem'}}>📑</span>
-            <span style={{fontSize:'0.62rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>Articles</span>
-          </button>
+          {[
+            {icon:'📑', label:'Articles', action:()=>setSidebarOpen(s=>!s)},
+            {icon:'📊', label:'Tracker',  action:()=>setShowTracker(true)},
+            {icon:'📌', label:'Bulletin', action:()=>{ setShowBulletin(true); history.replaceState(null,'','#bulletin') }},
+            {icon:'⚔',  label:'Initiative',action:()=>setShowInitiative(true)},
+            {icon:'🗺', label:'Map',      action:()=>setShowHexMap(true)},
+          ].map(({icon,label,action},i,arr)=>(
+            <button key={label} onClick={action}
+              style={{flex:1,border:'none',background:'none',cursor:'pointer',
+                fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',
+                display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,
+                borderRight:i<arr.length-1?'1px solid #e8e5e0':'none'}}>
+              <span style={{fontSize:'1.2rem'}}>{icon}</span>
+              <span style={{fontSize:'0.58rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>{label}</span>
+            </button>
+          ))}
         </div>
       )}
 
