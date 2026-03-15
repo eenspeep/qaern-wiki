@@ -41,5 +41,12 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.token.name == 'speep';
     }
+    // Downtime rolls: all authenticated users can read and create; only speep can delete
+    match /downtime/{rollId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow delete: if request.auth != null && request.auth.token.name == 'speep';
+      allow update: if false;
+    }
   }
 }
