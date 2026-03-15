@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import EmojiPicker from './EmojiPicker'
-import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, onSnapshot, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from './firebase'
 
 const ADMIN = 'speep'
@@ -160,7 +160,7 @@ function HexMapTab({ mapId, centerName, user, cols, rows }) {
   const containerRef = useRef(null)
   const isPanning = useRef(false)
   const lastMouse = useRef({ x: 0, y: 0 })
-  const writing = useRef(0)
+  const isSaving = useRef(false)
 
   const centerCol = Math.floor(cols / 2)
   const centerRow = Math.floor(rows / 2)
@@ -170,12 +170,25 @@ function HexMapTab({ mapId, centerName, user, cols, rows }) {
   const canvasH = rows * HEX_VERT_SPACING + HEX_H / 2 + 4
 
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, `hexmap/${mapId}`), snap => {
-      if (Date.now() - writing.current < 500) return
-      setHexData(snap.exists() ? (snap.data().hexes || {}) : {})
-      setLoaded(true)
-    }, err => { console.error('Hexmap error:', err); setLoaded(true) })
-    return unsub
+    setLoaded(false)
+    setHexData({})
+    const ref = doc(db, `hexmap/${mapId}`)
+    let unsub
+    const init = async () => {
+      try {
+        const snap = await getDoc(ref)
+        if (!snap.exists()) {
+          await setDoc(ref, { hexes: {}, updatedAt: serverTimestamp() })
+        }
+      } catch(e) { console.error('Hexmap init error:', e) }
+      unsub = onSnapshot(ref, snap => {
+        if (isSaving.current) return
+        setHexData(snap.exists() ? (snap.data().hexes || {}) : {})
+        setLoaded(true)
+      }, err => { console.error('Hexmap error:', err); setLoaded(true) })
+    }
+    init()
+    return () => { if (unsub) unsub() }
   }, [mapId])
 
   // Center the view on mount
@@ -190,9 +203,12 @@ function HexMapTab({ mapId, centerName, user, cols, rows }) {
     const key = `${col},${row}`
     const newHexes = { ...hexData, [key]: { ...data, col, row } }
     setHexData(newHexes)
-    writing.current = Date.now()
-    await setDoc(doc(db, `hexmap/${mapId}`), { hexes: newHexes, updatedAt: serverTimestamp() })
     setSelectedHex(null)
+    isSaving.current = true
+    try {
+      await setDoc(doc(db, `hexmap/${mapId}`), { hexes: newHexes, updatedAt: serverTimestamp() })
+    } catch(e) { console.error('Save hex error:', e) }
+    finally { setTimeout(() => { isSaving.current = false }, 800) }
   }, [hexData, mapId])
 
   // Pan handlers
@@ -461,12 +477,26 @@ export default function HexMap({ user, onClose }) {
   const [editingTabName, setEditingTabName] = useState(null)
   const [editingTabNameVal, setEditingTabNameVal] = useState('')
 
-  // Persist tabs list
+  // Persist tabs list — load from Firestore, fall back to defaults only if nothing saved
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'hexmap/tabs'), snap => {
-      if (snap.exists() && snap.data().tabs?.length) setTabs(snap.data().tabs)
-    })
-    return unsub
+    const ref = doc(db, 'hexmap/tabs')
+    const init = async () => {
+      try {
+        const snap = await getDoc(ref)
+        if (!snap.exists() || !snap.data().tabs?.length) {
+          // First time — save the defaults
+          const defaults = [
+            { id: 'melpho',  name: 'Melphö',  cols: 64, rows: 64 },
+            { id: 'attitan', name: 'Attitan', cols: 64, rows: 64 },
+          ]
+          await setDoc(ref, { tabs: defaults, updatedAt: serverTimestamp() })
+        }
+      } catch(e) { console.error('Tabs init error:', e) }
+      onSnapshot(ref, snap => {
+        if (snap.exists() && snap.data().tabs?.length) setTabs(snap.data().tabs)
+      })
+    }
+    init()
   }, [])
 
   const saveTabs = (newTabs) => {
