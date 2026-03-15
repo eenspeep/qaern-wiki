@@ -12,6 +12,7 @@ import Tracker from './Tracker'
 import BulletinBoard from './BulletinBoard'
 import HexMap from './HexMap'
 import InitiativeTracker from './InitiativeTracker'
+import Downtime from './Downtime'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 // Category tree: each entry is { name: string, subcategories: string[] }
@@ -551,6 +552,7 @@ export default function WikiApp() {
   const [showBulletin, setShowBulletin] = useState(false)
   const [showInitiative, setShowInitiative] = useState(false)
   const [showHexMap, setShowHexMap] = useState(false)
+  const [showDowntime, setShowDowntime] = useState(false)
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   const [collapsedCats, setCollapsedCats] = useState({})
   const [newCatInput, setNewCatInput] = useState('')
@@ -841,6 +843,10 @@ export default function WikiApp() {
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>🗺 Map</button>
         )}
         {!isMobile && (
+          <button onClick={()=>setShowDowntime(true)}
+            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>🌙 Downtime</button>
+        )}
+        {!isMobile && (
           <button onClick={()=>{setCreating(true);setEditing(false)}}
             style={{padding:'5px 14px',borderRadius:3,border:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.83rem',background:'#1b4f72',color:'#fff',flexShrink:0}}>+ New Article</button>
         )}
@@ -1121,10 +1127,10 @@ export default function WikiApp() {
         <div style={{borderTop:'1px solid #ccc9c0',background:'#f8f7f4',display:'flex',height:52,flexShrink:0}}>
           {[
             {icon:'📑', label:'Articles', action:()=>setSidebarOpen(s=>!s)},
-            {icon:'📊', label:'Tracker',  action:()=>setShowTracker(true)},
             {icon:'📌', label:'Bulletin', action:()=>{ setShowBulletin(true); history.replaceState(null,'','#bulletin') }},
             {icon:'⚔',  label:'Initiative',action:()=>setShowInitiative(true)},
             {icon:'🗺', label:'Map',      action:()=>setShowHexMap(true)},
+            {icon:'🌙', label:'Downtime', action:()=>setShowDowntime(true)},
           ].map(({icon,label,action},i,arr)=>(
             <button key={label} onClick={action}
               style={{flex:1,border:'none',background:'none',cursor:'pointer',
@@ -1142,6 +1148,7 @@ export default function WikiApp() {
       {showBulletin && <BulletinBoard user={user} onClose={()=>{ setShowBulletin(false); history.replaceState(null,'',window.location.pathname) }}/>}
       {showInitiative && <InitiativeTracker user={user} onClose={()=>setShowInitiative(false)}/>}
       {showHexMap && <HexMap user={user} onClose={()=>setShowHexMap(false)}/>}
+      {showDowntime && <Downtime user={user} onClose={()=>setShowDowntime(false)}/>}
 
       <WikiKeeper
         articles={articles}
