@@ -151,9 +151,10 @@ function HexEditor({ hexKey, hexData, coordLabel, isCenter, centerName, onSave, 
 // ─── Single hex map tab ────────────────────────────────────────────────────────
 function HexMapTab({ mapId, centerName, user, cols, rows }) {
   const admin = isAdmin(user)
-  const [hexData, setHexData] = useState({})   // { 'col,row': hexObj }
+  const [hexData, setHexData] = useState({})
+  const hexDataRef = useRef({})  // always current, no stale closure issues
   const [showLabels, setShowLabels] = useState(false)
-  const [selectedHex, setSelectedHex] = useState(null)  // {col, row}
+  const [selectedHex, setSelectedHex] = useState(null)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
   const [loaded, setLoaded] = useState(false)
@@ -183,7 +184,9 @@ function HexMapTab({ mapId, centerName, user, cols, rows }) {
       } catch(e) { console.error('Hexmap init error:', e) }
       unsub = onSnapshot(ref, snap => {
         if (isSaving.current) return
-        setHexData(snap.exists() ? (snap.data().hexes || {}) : {})
+        const data = snap.exists() ? (snap.data().hexes || {}) : {}
+        hexDataRef.current = data
+        setHexData(data)
         setLoaded(true)
       }, err => { console.error('Hexmap error:', err); setLoaded(true) })
     }
@@ -201,15 +204,20 @@ function HexMapTab({ mapId, centerName, user, cols, rows }) {
 
   const saveHex = useCallback(async (col, row, data) => {
     const key = `${col},${row}`
-    const newHexes = { ...hexData, [key]: { ...data, col, row } }
+    const newHexes = { ...hexDataRef.current, [key]: { ...data, col, row } }
+    hexDataRef.current = newHexes
     setHexData(newHexes)
     setSelectedHex(null)
     isSaving.current = true
     try {
       await setDoc(doc(db, `hexmap/${mapId}`), { hexes: newHexes, updatedAt: serverTimestamp() })
-    } catch(e) { console.error('Save hex error:', e) }
-    finally { setTimeout(() => { isSaving.current = false }, 800) }
-  }, [hexData, mapId])
+      console.log('Saved hex', key, 'to hexmap/', mapId)
+    } catch(e) {
+      console.error('Save hex error:', e)
+    } finally {
+      setTimeout(() => { isSaving.current = false }, 800)
+    }
+  }, [mapId])
 
   // Pan handlers
   const onMouseDown = (e) => {
