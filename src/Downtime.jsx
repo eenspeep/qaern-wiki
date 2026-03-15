@@ -5,13 +5,7 @@ import { db } from './firebase'
 const ADMIN = 'speep'
 const isAdmin = u => u?.displayName === ADMIN
 
-const BONUS_OPTIONS = [
-  { label: 'None',              value: 0 },
-  { label: '+1 Circumstance',   value: 1 },
-  { label: '+2 Circumstance',   value: 2 },
-  { label: '+1 Tool/Resource',  value: 1 },
-  { label: '+2 Tool/Resource',  value: 2 },
-]
+const BONUS_OPTIONS = [0,1,2,3,4,5,6]
 
 const d10 = () => Math.floor(Math.random() * 10) + 1
 
@@ -22,18 +16,33 @@ const inp = (extra={}) => ({ width:'100%', padding:'6px 8px', border:'1px solid 
 
 // ─── Die face SVG ─────────────────────────────────────────────────────────────
 function DieFace({ value, rolling, size=52 }) {
+  // d10 shape: pentagon-like polygon (10-sided die viewed from above)
+  const s = size / 2
+  // Approximate d10 as a kite/diamond shape — narrow top, wide middle, pointed bottom
+  const points = [
+    [s, 2],           // top point
+    [size-4, s*0.7],  // upper right
+    [size-2, s*1.35], // lower right
+    [s, size-2],      // bottom point
+    [2, s*1.35],      // lower left
+    [4, s*0.7],       // upper left
+  ].map(([x,y])=>`${x},${y}`).join(' ')
+
   return (
-    <div style={{ width:size, height:size, borderRadius:8, border:'2px solid #ccc9c0',
-      background: rolling ? '#1b4f72' : '#fdf8f0',
-      display:'flex', alignItems:'center', justifyContent:'center',
-      fontFamily:"'IM Fell English',serif", fontSize:size*0.45+'px',
-      color: rolling ? '#fff' : '#1b4f72', fontWeight:700,
-      boxShadow:'0 2px 8px rgba(0,0,0,0.12)',
-      transition:'background 0.15s, color 0.15s',
-      animation: rolling ? 'spin 0.4s linear infinite' : 'none',
-    }}>
-      {rolling ? '?' : value}
-    </div>
+    <svg width={size} height={size} style={{ overflow:'visible', flexShrink:0,
+      animation: rolling ? 'spin 0.4s linear infinite' : 'none' }}>
+      <polygon points={points}
+        fill={rolling ? '#1b4f72' : '#fdf8f0'}
+        stroke={rolling ? '#1b4f72' : '#ccc9c0'}
+        strokeWidth={2}
+        style={{ filter:'drop-shadow(0 2px 4px rgba(0,0,0,0.12))', transition:'fill 0.15s' }}/>
+      <text x={s} y={s*1.15} textAnchor='middle' dominantBaseline='middle'
+        fontSize={size*0.38} fontWeight='700'
+        fontFamily="'IM Fell English',serif"
+        fill={rolling ? '#fff' : '#1b4f72'}>
+        {rolling ? '?' : value}
+      </text>
+    </svg>
   )
 }
 
@@ -45,14 +54,13 @@ function RollForm({ user, onClose }) {
   const [project, setProject] = useState('')
   const [skilledBonus, setSkilledBonus] = useState(false)
   const [additionalBonus, setAdditionalBonus] = useState(0)
-  const [customBonus, setCustomBonus] = useState('')
   const [dice, setDice] = useState([null, null])
   const [rolling, setRolling] = useState(false)
   const [rolled, setRolled] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const skillBonus = skilledBonus ? 2 : 0
-  const addBonus = additionalBonus === 'custom' ? (parseInt(customBonus) || 0) : parseInt(additionalBonus) || 0
+  const addBonus = parseInt(additionalBonus) || 0
   const total = rolled ? (dice[0] + dice[1] + skillBonus + addBonus) : null
 
   const roll = () => {
@@ -78,8 +86,8 @@ function RollForm({ user, onClose }) {
         project: project.trim(),
         dice,
         skilledBonus,
-        additionalBonus: additionalBonus === 'custom' ? (parseInt(customBonus)||0) : parseInt(additionalBonus)||0,
-        additionalBonusLabel: additionalBonus === 'custom' ? `+${customBonus} Custom` : BONUS_OPTIONS.find(b=>b.value===parseInt(additionalBonus)&&b.label!=='None')?.label || '',
+        additionalBonus: parseInt(additionalBonus)||0,
+        additionalBonusLabel: additionalBonus > 0 ? `+${additionalBonus}` : '',
         total,
         createdAt: serverTimestamp(),
         uid: user?.uid || '',
@@ -133,17 +141,10 @@ function RollForm({ user, onClose }) {
             Applicable skill? <span style={{ color:'#1b4f72', fontWeight:600 }}>+2</span>
           </label>
           <label style={lb}>Additional Bonus</label>
-          <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            <select value={additionalBonus} onChange={e=>setAdditionalBonus(e.target.value)}
-              style={{ ...inp({marginBottom:0}), flex:1, cursor:'pointer' }}>
-              {BONUS_OPTIONS.map((b,i) => <option key={i} value={b.value}>{b.label}</option>)}
-              <option value='custom'>Custom…</option>
-            </select>
-            {additionalBonus === 'custom' && (
-              <input type='number' value={customBonus} onChange={e=>setCustomBonus(e.target.value)}
-                placeholder='+?' style={{ ...inp({marginBottom:0}), width:60 }}/>
-            )}
-          </div>
+          <select value={additionalBonus} onChange={e=>setAdditionalBonus(parseInt(e.target.value))}
+            style={{ ...inp({marginBottom:0}), cursor:'pointer' }}>
+            {BONUS_OPTIONS.map(v => <option key={v} value={v}>{v === 0 ? 'None' : `+${v}`}</option>)}
+          </select>
         </div>
 
         {/* Dice area */}
