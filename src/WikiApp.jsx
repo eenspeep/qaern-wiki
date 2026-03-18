@@ -13,6 +13,7 @@ import BulletinBoard from './BulletinBoard'
 import HexMap from './HexMap'
 import InitiativeTracker from './InitiativeTracker'
 import Downtime from './Downtime'
+import Chat from './Chat'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 // Category tree: each entry is { name: string, subcategories: string[] }
@@ -553,6 +554,7 @@ export default function WikiApp() {
   const [showInitiative, setShowInitiative] = useState(false)
   const [showHexMap, setShowHexMap] = useState(false)
   const [showDowntime, setShowDowntime] = useState(false)
+  const [showChat, setShowChat] = useState(false)
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   const [collapsedCats, setCollapsedCats] = useState({})
   const [newCatInput, setNewCatInput] = useState('')
@@ -847,6 +849,10 @@ export default function WikiApp() {
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>🌙 Downtime</button>
         )}
         {!isMobile && (
+          <button onClick={()=>setShowChat(true)}
+            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>💬 Forum</button>
+        )}
+        {!isMobile && (
           <button onClick={()=>{setCreating(true);setEditing(false)}}
             style={{padding:'5px 14px',borderRadius:3,border:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.83rem',background:'#1b4f72',color:'#fff',flexShrink:0}}>+ New Article</button>
         )}
@@ -1131,6 +1137,7 @@ export default function WikiApp() {
             {icon:'⚔',  label:'Initiative',action:()=>setShowInitiative(true)},
             {icon:'🗺', label:'Map',      action:()=>setShowHexMap(true)},
             {icon:'🌙', label:'Downtime', action:()=>setShowDowntime(true)},
+            {icon:'💬', label:'Forum',    action:()=>setShowChat(true)},
           ].map(({icon,label,action},i,arr)=>(
             <button key={label} onClick={action}
               style={{flex:1,border:'none',background:'none',cursor:'pointer',
@@ -1149,6 +1156,7 @@ export default function WikiApp() {
       {showInitiative && <InitiativeTracker user={user} onClose={()=>setShowInitiative(false)}/>}
       {showHexMap && <HexMap user={user} onClose={()=>setShowHexMap(false)}/>}
       {showDowntime && <Downtime user={user} onClose={()=>setShowDowntime(false)}/>}
+      {showChat && <Chat user={user} onClose={()=>setShowChat(false)}/>}
 
       <WikiKeeper
         articles={articles}
