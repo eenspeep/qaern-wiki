@@ -3,6 +3,12 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from './firebase'
 
+function useIsMobile(bp=680){
+  const [m,setM]=useState(()=>window.innerWidth<bp)
+  useEffect(()=>{const h=()=>setM(window.innerWidth<bp);window.addEventListener('resize',h);return()=>window.removeEventListener('resize',h)},[bp])
+  return m
+}
+
 const BOARD_DOC = 'bulletin/board'
 const ADMIN = 'speep'
 const isAdmin = user => user?.displayName === ADMIN
@@ -239,6 +245,123 @@ function NoteCard({ note, admin, user, onEdit, onDelete, onDragStart, isDragging
   )
 }
 
+// ─── Mobile note grid card ────────────────────────────────────────────────────
+function MobileNoteCard({ note, user, onClick }) {
+  const type = NOTE_TYPES[note.type] || NOTE_TYPES.notice
+  const rsvps = note.rsvps || []
+  const max = parseInt(note.maxPlayers) || 0
+  const myRsvp = rsvps.find(r => r.uid === user?.uid)
+
+  return (
+    <div onClick={onClick} style={{
+      background: type.bg, borderRadius: 6, padding: '12px 12px 10px',
+      border: `1px solid ${type.color}44`,
+      boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+      cursor: 'pointer', position: 'relative',
+      backgroundImage: `repeating-linear-gradient(0deg,transparent,transparent 22px,rgba(0,0,0,0.03) 22px,rgba(0,0,0,0.03) 23px)`,
+    }}>
+      {/* Pin dot at top */}
+      <div style={{ position: 'absolute', top: -6, left: '50%', transform: 'translateX(-50%)',
+        width: 12, height: 12, borderRadius: '50%',
+        background: `radial-gradient(circle at 35% 35%, #fff8, ${type.pin} 60%)`,
+        boxShadow: '0 1px 3px rgba(0,0,0,0.35)' }}/>
+      {/* Type badge */}
+      <div style={{ fontSize: '0.55rem', fontWeight: 700, textTransform: 'uppercase',
+        letterSpacing: '0.1em', color: type.color, marginBottom: 4, opacity: 0.85 }}>
+        {type.label}
+      </div>
+      {/* Title */}
+      <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '0.9rem',
+        color: '#2a1f0e', lineHeight: 1.3, fontWeight: 600 }}>
+        {note.title}
+      </div>
+      {/* RSVP pins row */}
+      {max > 0 && (
+        <div style={{ display: 'flex', gap: 4, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          {Array.from({ length: max }).map((_, i) => {
+            const rsvp = rsvps[i]
+            const isMe = rsvp?.uid === user?.uid
+            return (
+              <div key={i} title={rsvp?.name || 'Open'}
+                style={{ width: 12, height: 12, borderRadius: '50%',
+                  background: rsvp
+                    ? `radial-gradient(circle at 35% 35%, #fff6, ${isMe ? '#1b4f72' : '#8b3a3a'} 60%)`
+                    : 'rgba(0,0,0,0.1)',
+                  border: rsvp
+                    ? `1.5px solid ${isMe ? '#1b4f72' : '#8b3a3a'}`
+                    : '1.5px dashed rgba(0,0,0,0.2)',
+                }}/>
+            )
+          })}
+          <span style={{ fontSize: '0.6rem', color: 'rgba(0,0,0,0.35)', marginLeft: 2 }}>
+            {rsvps.length}/{max}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Note lightbox (mobile full view) ─────────────────────────────────────────
+function NoteLightbox({ note, user, admin, onClose, onEdit, onDelete, onRsvpChange }) {
+  const type = NOTE_TYPES[note.type] || NOTE_TYPES.notice
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 400,
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      fontFamily: "'Source Serif 4', Georgia, serif",
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: type.bg, width: '100%', maxWidth: 480,
+        borderRadius: '12px 12px 0 0', padding: '20px 18px 32px',
+        boxShadow: '0 -8px 32px rgba(0,0,0,0.3)', maxHeight: '85vh', overflowY: 'auto',
+        backgroundImage: `repeating-linear-gradient(0deg,transparent,transparent 24px,rgba(0,0,0,0.03) 24px,rgba(0,0,0,0.03) 25px)`,
+      }}>
+        {/* Drag handle */}
+        <div style={{ width: 40, height: 4, borderRadius: 2, background: 'rgba(0,0,0,0.15)',
+          margin: '0 auto 16px' }}/>
+        {/* Type + actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <span style={{ fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase',
+            letterSpacing: '0.1em', color: type.color, opacity: 0.85 }}>{type.label}</span>
+          <div style={{ flex: 1 }}/>
+          {admin && <>
+            <button onClick={onEdit} style={{ background: 'none', border: '1px solid rgba(0,0,0,0.15)',
+              borderRadius: 3, fontSize: '0.7rem', color: '#666', cursor: 'pointer', padding: '3px 8px' }}>✎</button>
+            <button onClick={onDelete} style={{ background: 'none', border: '1px solid rgba(180,0,0,0.2)',
+              borderRadius: 3, fontSize: '0.7rem', color: '#b44', cursor: 'pointer', padding: '3px 8px' }}>🗑</button>
+          </>}
+        </div>
+        {/* Title */}
+        <div style={{ fontFamily: "'IM Fell English', serif", fontSize: '1.2rem',
+          color: '#2a1f0e', lineHeight: 1.3, marginBottom: 10 }}>
+          {note.title}
+        </div>
+        {/* Body */}
+        {note.body && (
+          <div style={{ fontSize: '0.82rem', color: '#4a3a28', lineHeight: 1.65, marginBottom: 10 }}>
+            {note.body}
+          </div>
+        )}
+        {/* Adventure fields */}
+        {note.type === 'adventure' && (note.rewards || note.level || note.length) && (
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(0,0,0,0.08)',
+            fontSize: '0.76rem', color: '#5a4a30', lineHeight: 1.8 }}>
+            {note.rewards && <div><span style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem', opacity: 0.7 }}>Rewards </span>{note.rewards}</div>}
+            {note.level  && <div><span style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem', opacity: 0.7 }}>Level </span>{note.level}</div>}
+            {note.length && <div><span style={{ fontWeight: 700, textTransform: 'uppercase', fontSize: '0.65rem', opacity: 0.7 }}>Length </span>{note.length}</div>}
+          </div>
+        )}
+        {/* RSVP */}
+        <div style={{ marginTop: 10 }}>
+          <RsvpRow note={note} user={user} onRsvpChange={onRsvpChange}/>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Note editor ──────────────────────────────────────────────────────────────
 function NoteEditor({ note, onSave, onCancel }) {
   const [draft, setDraft] = useState(note || {
@@ -324,7 +447,9 @@ function NoteEditor({ note, onSave, onCancel }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function BulletinBoard({ user, onClose }) {
   const admin = isAdmin(user)
+  const isMobile = useIsMobile()
   const [mainTab, setMainTab] = useState('notices')  // 'notices' | 'adventures'
+  const [lightboxNote, setLightboxNote] = useState(null)
   const [notes, setNotes] = useState([])
   const [loaded, setLoaded] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -445,45 +570,81 @@ export default function BulletinBoard({ user, onClose }) {
         </div>
       )}
 
-      {/* Notices corkboard */}
+      {/* Notices — mobile grid or desktop corkboard */}
       {mainTab === 'notices' && <>
-        <div ref={boardRef} style={{
-          flex: 1, position: 'relative', overflow: 'hidden',
-          background: '#c4924a',
-          backgroundImage: `
-            radial-gradient(ellipse at 20% 30%, rgba(180,120,40,0.4) 0%, transparent 60%),
-            radial-gradient(ellipse at 80% 70%, rgba(140,80,20,0.3) 0%, transparent 50%),
-            radial-gradient(ellipse at 50% 50%, rgba(200,150,80,0.2) 0%, transparent 70%),
-            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23c4924a'/%3E%3Ccircle cx='1' cy='1' r='0.5' fill='rgba(0,0,0,0.07)'/%3E%3Ccircle cx='3' cy='3' r='0.4' fill='rgba(0,0,0,0.05)'/%3E%3C/svg%3E")
-          `,
-        }}>
-          <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
-            boxShadow: 'inset 0 0 60px rgba(0,0,0,0.35)' }}/>
-          {!loaded && (
-            <div style={{ color: '#8a6a3a', fontSize: '0.9rem', fontStyle: 'italic',
-              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }}>
-              Reading the board…
+        {isMobile ? (
+          /* Mobile: scrollable grid of compact cards */
+          <div style={{ flex: 1, overflowY: 'auto', background: '#c4924a',
+            backgroundImage: `radial-gradient(ellipse at 20% 30%, rgba(180,120,40,0.4) 0%, transparent 60%),
+              radial-gradient(ellipse at 80% 70%, rgba(140,80,20,0.3) 0%, transparent 50%)`,
+            padding: '20px 14px 24px' }}>
+            {!loaded && <div style={{ color: '#8a6a3a', textAlign: 'center', fontStyle: 'italic', marginTop: 40 }}>Reading the board…</div>}
+            {loaded && notes.length === 0 && (
+              <div style={{ color: '#8a6a3a', textAlign: 'center', fontStyle: 'italic', marginTop: 40, fontSize: '0.9rem' }}>
+                {admin ? 'The board is empty. Post a notice to get started.' : 'No notices posted yet.'}
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+              {notes.map(note => (
+                <MobileNoteCard key={note.id} note={note} user={user}
+                  onClick={() => setLightboxNote(note)}/>
+              ))}
             </div>
-          )}
-          {loaded && notes.length === 0 && (
-            <div style={{ color: '#8a6a3a', fontSize: '0.9rem', fontStyle: 'italic',
-              position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
-              textAlign: 'center', pointerEvents: 'none' }}>
-              {admin ? 'The board is empty. Post a notice to get started.' : 'No notices posted yet.'}
-            </div>
-          )}
-          {notes.map(note => (
-            <NoteCard key={note.id} note={note} admin={admin} user={user}
-              isDragging={dragging?.id === note.id}
-              onDragStart={(e) => onNoteMouseDown(e, note)}
-              onEdit={() => setEditing(note)}
-              onDelete={() => deleteNote(note.id)}
-              onRsvpChange={(newRsvps) => updateRsvp(note.id, newRsvps)}/>
-          ))}
-        </div>
+          </div>
+        ) : (
+          /* Desktop: free-placement corkboard */
+          <div ref={boardRef} style={{
+            flex: 1, position: 'relative', overflow: 'hidden',
+            background: '#c4924a',
+            backgroundImage: `
+              radial-gradient(ellipse at 20% 30%, rgba(180,120,40,0.4) 0%, transparent 60%),
+              radial-gradient(ellipse at 80% 70%, rgba(140,80,20,0.3) 0%, transparent 50%),
+              radial-gradient(ellipse at 50% 50%, rgba(200,150,80,0.2) 0%, transparent 70%),
+              url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='%23c4924a'/%3E%3Ccircle cx='1' cy='1' r='0.5' fill='rgba(0,0,0,0.07)'/%3E%3Ccircle cx='3' cy='3' r='0.4' fill='rgba(0,0,0,0.05)'/%3E%3C/svg%3E")
+            `,
+          }}>
+            <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none',
+              boxShadow: 'inset 0 0 60px rgba(0,0,0,0.35)' }}/>
+            {!loaded && (
+              <div style={{ color: '#8a6a3a', fontSize: '0.9rem', fontStyle: 'italic',
+                position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)' }}>
+                Reading the board…
+              </div>
+            )}
+            {loaded && notes.length === 0 && (
+              <div style={{ color: '#8a6a3a', fontSize: '0.9rem', fontStyle: 'italic',
+                position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+                textAlign: 'center', pointerEvents: 'none' }}>
+                {admin ? 'The board is empty. Post a notice to get started.' : 'No notices posted yet.'}
+              </div>
+            )}
+            {notes.map(note => (
+              <NoteCard key={note.id} note={note} admin={admin} user={user}
+                isDragging={dragging?.id === note.id}
+                onDragStart={(e) => onNoteMouseDown(e, note)}
+                onEdit={() => setEditing(note)}
+                onDelete={() => deleteNote(note.id)}
+                onRsvpChange={(newRsvps) => updateRsvp(note.id, newRsvps)}/>
+            ))}
+          </div>
+        )}
         {editing && (
           <NoteEditor note={editing === 'new' ? null : editing}
             onSave={saveNote} onCancel={() => setEditing(null)}/>
+        )}
+        {/* Mobile lightbox */}
+        {lightboxNote && (
+          <NoteLightbox
+            note={lightboxNote}
+            user={user}
+            admin={admin}
+            onClose={() => setLightboxNote(null)}
+            onEdit={() => { setEditing(lightboxNote); setLightboxNote(null) }}
+            onDelete={() => { deleteNote(lightboxNote.id); setLightboxNote(null) }}
+            onRsvpChange={(newRsvps) => {
+              updateRsvp(lightboxNote.id, newRsvps)
+              setLightboxNote(n => ({ ...n, rsvps: newRsvps }))
+            }}/>
         )}
       </>}
     </div>
