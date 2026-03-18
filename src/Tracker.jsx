@@ -118,6 +118,10 @@ function TrackerBar({ item, editable, onChange, onDelete }) {
     )
   }
 
+  // Dynamic color based on percentage: green > 60%, yellow 30-60%, red < 30%
+  const barColor = pct > 60 ? '#3a7a3a' : pct > 30 ? '#c8a020' : '#b44'
+  const trackColor = pct > 60 ? '#d4e8d4' : pct > 30 ? '#f0e8cc' : '#f0d4d4'
+
   return (
     <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 6, background: '#faf9f6', border: '1px solid #e8e5e0', display: 'flex', alignItems: 'center', gap: 12 }}>
       {item.image && (
@@ -131,14 +135,14 @@ function TrackerBar({ item, editable, onChange, onDelete }) {
             {item.max > 0 && <span style={{ marginLeft: 4, color: '#aaa' }}>({pct.toFixed(1)}%)</span>}
           </span>
         </div>
-        <div style={{ height: 8, borderRadius: 4, background: pal.track, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: pct + '%', background: pal.fill, borderRadius: 4, transition: 'width 0.3s' }}/>
+        <div style={{ height: 8, borderRadius: 4, background: trackColor, overflow: 'hidden', transition: 'background 0.3s' }}>
+          <div style={{ height: '100%', width: pct + '%', background: barColor, borderRadius: 4, transition: 'width 0.3s, background 0.3s' }}/>
         </div>
         {editable && (
           <div style={{ display: 'flex', gap: 6, marginTop: 6, alignItems: 'center' }}>
             <input type='range' min={0} max={item.max} value={item.current}
               onChange={e => onChange({ ...item, current: Number(e.target.value) })}
-              style={{ flex: 1, accentColor: pal.fill }}/>
+              style={{ flex: 1, accentColor: barColor }}/>
             <button onClick={startEdit} style={{ ...btnSecondary, padding: '2px 8px', fontSize: '0.72rem' }}>✎ Edit</button>
           </div>
         )}
@@ -615,8 +619,25 @@ export default function Tracker({ user, onClose }) {
     updateTab(tabId, t => ({ ...t, groups: t.groups.map(g => g.id === groupId ? { ...g, items: [...g.items, newItem] } : g) }))
   }
 
+  const itemPct = (it) => {
+    if (it.type === 'bar') return it.max > 0 ? it.current / it.max : 0
+    if (it.type === 'clock') return it.segments > 0 ? it.filled / it.segments : 0
+    return 0
+  }
+
   const updateItem = (tabId, groupId, itemId, newItem) => {
-    updateTab(tabId, t => ({ ...t, groups: t.groups.map(g => g.id === groupId ? { ...g, items: g.items.map(it => it.id === itemId ? newItem : it) } : g) }))
+    updateTab(tabId, t => ({
+      ...t,
+      groups: t.groups.map(g => {
+        if (g.id !== groupId) return g
+        const updated = g.items.map(it => it.id === itemId ? newItem : it)
+        // Sort bars by fill % descending on save; non-bars stay in place
+        const bars = updated.filter(it => it.type === 'bar').sort((a,b) => itemPct(b) - itemPct(a))
+        const others = updated.filter(it => it.type !== 'bar')
+        const sorted = updated.map(it => it.type === 'bar' ? bars.shift() : others.shift())
+        return { ...g, items: sorted }
+      })
+    }))
   }
 
   const deleteItem = (tabId, groupId, itemId) => {
