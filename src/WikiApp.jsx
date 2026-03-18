@@ -536,6 +536,65 @@ function SeedButton({ onSeed }) {
   )
 }
 
+// ─── Mobile toolbar with overflow drawer ─────────────────────────────────────
+function MobileToolbar({ onArticles, onBulletin, onInitiative, onTracker, onMap, onDowntime, onForum, onChangelog }) {
+  const [moreOpen, setMoreOpen] = useState(false)
+  const primary = [
+    {icon:'📑', label:'Articles',   action: onArticles},
+    {icon:'📌', label:'Bulletin',   action: onBulletin},
+    {icon:'⚔',  label:'Initiative', action: onInitiative},
+    {icon:'📊', label:'Tracker',    action: onTracker},
+  ]
+  const overflow = [
+    {icon:'🗺',  label:'Map',       action: onMap},
+    {icon:'🌙',  label:'Downtime',  action: onDowntime},
+    {icon:'💬',  label:'Forum',     action: onForum},
+    {icon:'📋',  label:'Changelog', action: onChangelog},
+  ]
+  const btn = {border:'none',background:'none',cursor:'pointer',
+    fontFamily:"'Source Serif 4',Georgia,serif",color:'#555',
+    display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2}
+
+  return (
+    <>
+      {moreOpen && (
+        <div onClick={()=>setMoreOpen(false)}
+          style={{position:'fixed',inset:0,zIndex:198,background:'rgba(0,0,0,0.25)'}}/>
+      )}
+      {moreOpen && (
+        <div style={{position:'fixed',bottom:52,left:0,right:0,zIndex:199,
+          background:'#f8f7f4',borderTop:'1px solid #ccc9c0',
+          display:'grid',gridTemplateColumns:'repeat(4,1fr)',
+          boxShadow:'0 -6px 24px rgba(0,0,0,0.12)'}}>
+          {overflow.map(({icon,label,action},i)=>(
+            <button key={label} onClick={()=>{action();setMoreOpen(false)}}
+              style={{...btn,padding:'14px 4px',borderRight:i<overflow.length-1?'1px solid #e8e5e0':'none'}}>
+              <span style={{fontSize:'1.3rem'}}>{icon}</span>
+              <span style={{fontSize:'0.58rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>{label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{borderTop:'1px solid #ccc9c0',background:'#f8f7f4',
+        display:'flex',height:52,flexShrink:0,zIndex:200,position:'relative'}}>
+        {primary.map(({icon,label,action})=>(
+          <button key={label} onClick={action}
+            style={{...btn,flex:1,borderRight:'1px solid #e8e5e0'}}>
+            <span style={{fontSize:'1.2rem'}}>{icon}</span>
+            <span style={{fontSize:'0.58rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>{label}</span>
+          </button>
+        ))}
+        <button onClick={()=>setMoreOpen(o=>!o)}
+          style={{...btn,width:52,flexShrink:0,borderLeft:'1px solid #e8e5e0',
+            background:moreOpen?'#f0eeea':'none'}}>
+          <span style={{fontSize:'1.1rem',letterSpacing:'-1px',color: moreOpen?'#1b4f72':'#555'}}>•••</span>
+          <span style={{fontSize:'0.58rem',textTransform:'uppercase',letterSpacing:'0.05em',color:moreOpen?'#1b4f72':'#555'}}>More</span>
+        </button>
+      </div>
+    </>
+  )
+}
+
 // ─── Main Wiki App ────────────────────────────────────────────────────────────
 export default function WikiApp() {
   const { user, logout } = useAuth()
@@ -1130,25 +1189,16 @@ export default function WikiApp() {
 
       {/* Mobile bottom toolbar */}
       {isMobile && (
-        <div style={{borderTop:'1px solid #ccc9c0',background:'#f8f7f4',display:'flex',height:52,flexShrink:0}}>
-          {[
-            {icon:'📑', label:'Articles', action:()=>setSidebarOpen(s=>!s)},
-            {icon:'📌', label:'Bulletin', action:()=>{ setShowBulletin(true); history.replaceState(null,'','#bulletin') }},
-            {icon:'⚔',  label:'Initiative',action:()=>setShowInitiative(true)},
-            {icon:'🗺', label:'Map',      action:()=>setShowHexMap(true)},
-            {icon:'🌙', label:'Downtime', action:()=>setShowDowntime(true)},
-            {icon:'💬', label:'Forum',    action:()=>setShowChat(true)},
-          ].map(({icon,label,action},i,arr)=>(
-            <button key={label} onClick={action}
-              style={{flex:1,border:'none',background:'none',cursor:'pointer',
-                fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.78rem',color:'#555',
-                display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,
-                borderRight:i<arr.length-1?'1px solid #e8e5e0':'none'}}>
-              <span style={{fontSize:'1.2rem'}}>{icon}</span>
-              <span style={{fontSize:'0.58rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>{label}</span>
-            </button>
-          ))}
-        </div>
+        <MobileToolbar
+          onArticles={()=>setSidebarOpen(s=>!s)}
+          onBulletin={()=>{ setShowBulletin(true); history.replaceState(null,'','#bulletin') }}
+          onInitiative={()=>setShowInitiative(true)}
+          onTracker={()=>setShowTracker(true)}
+          onMap={()=>setShowHexMap(true)}
+          onDowntime={()=>setShowDowntime(true)}
+          onForum={()=>setShowChat(true)}
+          onChangelog={()=>setShowChangelog(s=>!s)}
+        />
       )}
 
       {showTracker && <Tracker user={user} onClose={()=>setShowTracker(false)}/> }
