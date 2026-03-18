@@ -118,9 +118,27 @@ function TrackerBar({ item, editable, onChange, onDelete }) {
     )
   }
 
-  // Dynamic color based on percentage: green > 60%, yellow 30-60%, red < 30%
-  const barColor = pct > 60 ? '#3a7a3a' : pct > 30 ? '#c8a020' : '#b44'
-  const trackColor = pct > 60 ? '#d4e8d4' : pct > 30 ? '#f0e8cc' : '#f0d4d4'
+  // Smooth gradient: red (0%) → amber (50%) → green (100%)
+  const lerpColor = (p) => {
+    const t = Math.max(0, Math.min(1, p / 100))
+    let r, g, b
+    if (t < 0.5) {
+      // red #b44 → amber #c8a020
+      const u = t * 2
+      r = Math.round(0xb4 + (0xc8 - 0xb4) * u)
+      g = Math.round(0x44 + (0xa0 - 0x44) * u)
+      b = Math.round(0x44 + (0x20 - 0x44) * u)
+    } else {
+      // amber #c8a020 → green #3a7a3a
+      const u = (t - 0.5) * 2
+      r = Math.round(0xc8 + (0x3a - 0xc8) * u)
+      g = Math.round(0xa0 + (0x7a - 0xa0) * u)
+      b = Math.round(0x20 + (0x3a - 0x20) * u)
+    }
+    return `rgb(${r},${g},${b})`
+  }
+  const barColor = lerpColor(pct)
+  const trackColor = lerpColor(pct).replace('rgb(', 'rgba(').replace(')', ',0.18)')
 
   return (
     <div style={{ marginBottom: 10, padding: '10px 12px', borderRadius: 6, background: '#faf9f6', border: '1px solid #e8e5e0', display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -619,11 +637,7 @@ export default function Tracker({ user, onClose }) {
     updateTab(tabId, t => ({ ...t, groups: t.groups.map(g => g.id === groupId ? { ...g, items: [...g.items, newItem] } : g) }))
   }
 
-  const itemPct = (it) => {
-    if (it.type === 'bar') return it.max > 0 ? it.current / it.max : 0
-    if (it.type === 'clock') return it.segments > 0 ? it.filled / it.segments : 0
-    return 0
-  }
+  const barPct = (it) => it.max > 0 ? it.current / it.max : 0
 
   const updateItem = (tabId, groupId, itemId, newItem) => {
     updateTab(tabId, t => ({
@@ -631,11 +645,10 @@ export default function Tracker({ user, onClose }) {
       groups: t.groups.map(g => {
         if (g.id !== groupId) return g
         const updated = g.items.map(it => it.id === itemId ? newItem : it)
-        // Sort bars by fill % descending on save; non-bars stay in place
-        const bars = updated.filter(it => it.type === 'bar').sort((a,b) => itemPct(b) - itemPct(a))
-        const others = updated.filter(it => it.type !== 'bar')
-        const sorted = updated.map(it => it.type === 'bar' ? bars.shift() : others.shift())
-        return { ...g, items: sorted }
+        // Bars sort by fill % desc; non-bar items stay after bars in original order
+        const bars = updated.filter(it => it.type === 'bar').sort((a, b) => barPct(b) - barPct(a))
+        const nonBars = updated.filter(it => it.type !== 'bar')
+        return { ...g, items: [...bars, ...nonBars] }
       })
     }))
   }
