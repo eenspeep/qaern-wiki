@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ref, set, onValue, onDisconnect, serverTimestamp } from 'firebase/database'
-import { rtdb } from './firebase'
+import { doc, onSnapshot } from 'firebase/firestore'
+import { rtdb, db } from './firebase'
 
 // Returns a stable color for a given uid
 const COLORS = [
@@ -19,7 +20,17 @@ export function initials(name = '?') {
 }
 
 export function usePresence(user, currentArticleId, isEditing) {
-  const [online, setOnline] = useState({}) // { uid: { displayName, articleId, editing, color } }
+  const [online, setOnline] = useState({})
+  const [customColor, setCustomColor] = useState(null)
+
+  // Subscribe to own Firestore color
+  useEffect(() => {
+    if (!user?.uid) return
+    const unsub = onSnapshot(doc(db, 'users', user.uid), snap => {
+      setCustomColor(snap.exists() ? snap.data().color || null : null)
+    })
+    return unsub
+  }, [user?.uid])
 
   useEffect(() => {
     if (!user) return
@@ -30,7 +41,7 @@ export function usePresence(user, currentArticleId, isEditing) {
       displayName: user.displayName || user.email,
       articleId: currentArticleId,
       editing: isEditing,
-      color: uidColor(user.uid),
+      color: customColor || uidColor(user.uid),
       lastSeen: serverTimestamp(),
     }
 
@@ -38,7 +49,7 @@ export function usePresence(user, currentArticleId, isEditing) {
     onDisconnect(myRef).remove()
 
     return () => { set(myRef, null) }
-  }, [user, currentArticleId, isEditing])
+  }, [user, currentArticleId, isEditing, customColor])
 
   useEffect(() => {
     if (!user) return

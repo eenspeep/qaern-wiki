@@ -499,7 +499,7 @@ function PresenceBubbles({ online, currentUser }) {
     <div style={{display:'flex',alignItems:'center',gap:4}}>
       {others.slice(0,8).map(([uid,u])=>(
         <div key={uid} title={`${u.displayName}${u.editing?' (editing)':' (reading)'}`}
-          style={{width:30,height:30,borderRadius:'50%',background:u.color,display:'flex',alignItems:'center',justifyContent:'center',
+          style={{width:30,height:30,borderRadius:'50%',background:u.color||uidColor(uid),display:'flex',alignItems:'center',justifyContent:'center',
             fontSize:'0.7rem',fontWeight:700,color:'#fff',border:u.editing?'2px solid #f5a623':'2px solid transparent',
             cursor:'default',userSelect:'none',flexShrink:0,position:'relative'}}>
           {initials(u.displayName)}
@@ -532,6 +532,104 @@ function SeedButton({ onSeed }) {
       <button onClick={seed} disabled={seeding} style={{padding:'8px 20px',background:'#1b4f72',color:'#fff',border:'none',borderRadius:4,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.9rem'}}>
         {seeding?'Seeding…':'Seed Default Articles'}
       </button>
+    </div>
+  )
+}
+
+// ─── User settings panel ─────────────────────────────────────────────────────
+function UserSettings({ user, updateUser, currentColor, onClose }) {
+  const PRESET_COLORS = [
+    '#e05c5c','#e0895c','#c8b44a','#5ca85c','#5c8ae0',
+    '#8e5ce0','#c45cb4','#5cb4c4','#7ab85c','#c45c7a',
+    '#1b4f72','#2e7d32','#6d4c41','#37474f','#ad1457',
+  ]
+  const [name, setName] = useState(user?.displayName || '')
+  const [color, setColor] = useState(currentColor || null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await updateUser({ displayName: name.trim() || user.displayName, color })
+      setSaved(true)
+      setTimeout(() => { setSaved(false); onClose() }, 800)
+    } catch(e) { console.error(e) }
+    finally { setSaving(false) }
+  }
+
+  const preview = color || currentColor
+  const lb = { display:'block', fontSize:'0.67rem', textTransform:'uppercase', letterSpacing:'0.07em', color:'#888', marginBottom:4 }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:400,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}
+      onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{
+        background:'#fdf8f0', borderRadius:8, padding:'1.5rem', width:'100%', maxWidth:340,
+        boxShadow:'0 8px 40px rgba(0,0,0,0.25)', fontFamily:"'Source Serif 4',Georgia,serif" }}>
+        <div style={{ fontFamily:"'IM Fell English',serif", fontSize:'1.1rem', color:'#1b4f72', marginBottom:'1.2rem' }}>
+          Account Settings
+        </div>
+
+        {/* Preview bubble */}
+        <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:'1.2rem',
+          padding:'10px 12px', background:'#f0eeea', borderRadius:6 }}>
+          <div style={{ width:40, height:40, borderRadius:'50%', background: preview,
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:'0.82rem', fontWeight:700, color:'#fff', flexShrink:0,
+            boxShadow:'0 2px 6px rgba(0,0,0,0.15)' }}>
+            {(name||user?.displayName||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()}
+          </div>
+          <div>
+            <div style={{ fontWeight:600, fontSize:'0.88rem', color:'#222' }}>{name || user?.displayName}</div>
+            <div style={{ fontSize:'0.72rem', color:'#aaa' }}>{user?.email}</div>
+          </div>
+        </div>
+
+        {/* Display name */}
+        <label style={lb}>Display Name</label>
+        <input value={name} onChange={e=>setName(e.target.value)}
+          style={{ width:'100%', padding:'6px 8px', border:'1px solid #ccc9c0', borderRadius:3,
+            fontSize:'0.85rem', fontFamily:"'Source Serif 4',Georgia,serif",
+            background:'#f8f7f4', color:'#222', boxSizing:'border-box', marginBottom:14 }}/>
+
+        {/* Color picker */}
+        <label style={lb}>Bubble Color</label>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:14 }}>
+          {PRESET_COLORS.map(c => (
+            <div key={c} onClick={() => setColor(c)}
+              style={{ width:28, height:28, borderRadius:'50%', background:c, cursor:'pointer',
+                border: color===c ? '3px solid #1b4f72' : '2px solid transparent',
+                boxShadow: color===c ? '0 0 0 1px #1b4f72' : '0 1px 3px rgba(0,0,0,0.2)',
+                transition:'transform 0.1s', transform: color===c ? 'scale(1.2)':'scale(1)' }}/>
+          ))}
+          {/* Custom color */}
+          <label title='Custom color' style={{ width:28, height:28, borderRadius:'50%',
+            background: color && !PRESET_COLORS.includes(color) ? color : '#f0eeea',
+            border:'1px dashed #ccc', cursor:'pointer', display:'flex',
+            alignItems:'center', justifyContent:'center', fontSize:'0.7rem', color:'#aaa',
+            overflow:'hidden', position:'relative' }}>
+            <span style={{ pointerEvents:'none' }}>🎨</span>
+            <input type='color' value={color||'#888888'} onChange={e=>setColor(e.target.value)}
+              style={{ position:'absolute', inset:0, opacity:0, cursor:'pointer', width:'100%', height:'100%' }}/>
+          </label>
+        </div>
+
+        <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button onClick={onClose}
+            style={{ padding:'6px 14px', border:'1px solid #ccc9c0', borderRadius:3,
+              background:'#f0eeea', cursor:'pointer', fontSize:'0.8rem',
+              fontFamily:"'Source Serif 4',Georgia,serif" }}>Cancel</button>
+          <button onClick={save} disabled={saving}
+            style={{ padding:'6px 16px', border:'none', borderRadius:3,
+              background: saved ? '#3a7a3a' : '#1b4f72', color:'#fff',
+              cursor:'pointer', fontSize:'0.8rem',
+              fontFamily:"'Source Serif 4',Georgia,serif" }}>
+            {saved ? '✓ Saved' : saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -597,7 +695,7 @@ function MobileToolbar({ onArticles, onBulletin, onInitiative, onTracker, onMap,
 
 // ─── Main Wiki App ────────────────────────────────────────────────────────────
 export default function WikiApp() {
-  const { user, logout } = useAuth()
+  const { user, logout, updateUser } = useAuth()
   const [articles, setArticles] = useState({})
   const [articlesLoaded, setArticlesLoaded] = useState(false)
   const [currentId, setCurrentId] = useState(null)
@@ -628,7 +726,20 @@ export default function WikiApp() {
   const [dragOverCatIdx, setDragOverCatIdx] = useState(null)
 
   const isMobile = useIsMobile()
+  const [userColor, setUserColor] = useState(null)
+  const [showSettings, setShowSettings] = useState(false)
   const online = usePresence(user, currentId, editing)
+
+  // Load user's custom color from Firestore
+  useEffect(() => {
+    if (!user?.uid) return
+    const unsub = onSnapshot(doc(db, 'users', user.uid), snap => {
+      if (snap.exists()) setUserColor(snap.data().color || null)
+    })
+    return unsub
+  }, [user?.uid])
+
+  const effectiveColor = userColor || uidColor(user?.uid || '')
 
   // Read initial URL hash — #bulletin opens bulletin, otherwise treat as article id
   useEffect(() => {
@@ -916,8 +1027,10 @@ export default function WikiApp() {
             style={{padding:'5px 14px',borderRadius:3,border:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.83rem',background:'#1b4f72',color:'#fff',flexShrink:0}}>+ New Article</button>
         )}
         <div style={{display:'flex',alignItems:'center',gap:isMobile?4:6,borderLeft:'1px solid #ccc9c0',paddingLeft:isMobile?'0.5rem':'0.75rem',marginLeft:isMobile?0:4}}>
-          <div style={{width:28,height:28,borderRadius:'50%',background:uidColor(user.uid),display:'flex',alignItems:'center',justifyContent:'center',fontSize:'0.68rem',fontWeight:700,color:'#fff',flexShrink:0}}>{initials(user.displayName||user.email)}</div>
+          <div onClick={()=>setShowSettings(true)}
+            style={{width:28,height:28,borderRadius:'50%',background:effectiveColor,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'0.68rem',fontWeight:700,color:'#fff',flexShrink:0,cursor:'pointer',title:'Settings'}}>{initials(user.displayName||user.email)}</div>
           {!isMobile && <span style={{fontSize:'0.8rem',color:'#555',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.displayName||user.email}</span>}
+          {!isMobile && <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',fontSize:'0.85rem',color:'#aaa',padding:'0 2px'}} title='Settings'>⚙</button>}
           <button onClick={logout} style={{padding:'3px 8px',border:'1px solid #ccc9c0',borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.75rem',color:'#888'}}>Sign out</button>
         </div>
       </header>
@@ -1207,6 +1320,8 @@ export default function WikiApp() {
       {showHexMap && <HexMap user={user} onClose={()=>setShowHexMap(false)}/>}
       {showDowntime && <Downtime user={user} onClose={()=>setShowDowntime(false)}/>}
       {showChat && <Chat user={user} onClose={()=>setShowChat(false)}/>}
+
+      {showSettings && <UserSettings user={user} updateUser={updateUser} currentColor={effectiveColor} onClose={()=>setShowSettings(false)}/>}
 
       <WikiKeeper
         articles={articles}

@@ -7,6 +7,7 @@ export default function AuthScreen() {
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -19,6 +20,7 @@ export default function AuthScreen() {
         await login(email, password)
       } else {
         if (!displayName.trim()) { setError('Display name is required.'); setLoading(false); return }
+        if (password !== confirmPassword) { setError('Passwords do not match.'); setLoading(false); return }
         await register(email, password, displayName.trim())
       }
     } catch (err) {
@@ -59,7 +61,7 @@ export default function AuthScreen() {
 
         <div style={{ display: 'flex', marginBottom: '1.4rem', borderBottom: '1px solid #e8e5e0' }}>
           {['login','register'].map(m => (
-            <button key={m} onClick={() => { setMode(m); setError('') }}
+            <button key={m} onClick={() => { setMode(m); setError(''); setConfirmPassword('') }}
               style={{
                 flex: 1, padding: '7px 0', border: 'none', background: 'none', cursor: 'pointer',
                 fontFamily: "'Source Serif 4', Georgia, serif", fontSize: '0.88rem',
@@ -84,6 +86,12 @@ export default function AuthScreen() {
           <input style={inp} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" autoFocus={mode === 'login'} />
           <label style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', display: 'block', marginBottom: 3 }}>Password</label>
           <input style={inp} type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
+          {mode === 'register' && (
+            <>
+              <label style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', display: 'block', marginBottom: 3 }}>Confirm Password</label>
+              <input style={inp} type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} placeholder="••••••••" />
+            </>
+          )}
 
           {error && (
             <div style={{ background: '#fff5f5', border: '1px solid #f5c6cb', borderRadius: 4, padding: '8px 12px', fontSize: '0.84rem', color: '#b44', marginBottom: 10 }}>
