@@ -11,17 +11,56 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'API key not configured' })
 
-  // Build a full wiki snapshot including raw HTML so Claude can learn house style
-  const wikiContext = Object.values(articles || {}).map(a => {
-    const infoLines = Object.entries(a.infobox || {}).map(([k,v]) => `  ${k}: ${v}`).join('\n')
-    return `=== ${a.title} (${a.category}) [id: ${a.id}] ===
+  const allArticles = Object.values(articles || {})
+
+  // Always build a lightweight index — title, id, category, subtitle only
+  const wikiIndex = allArticles.map(a =>
+    `[id: ${a.id}] ${a.title} (${a.category})${a.subtitle ? ' — ' + a.subtitle : ''}`
+  ).join('\n')
+
+  // Detect which articles are referenced in the latest user message
+  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || ''
+  const referencedArticles = allArticles.filter(a => {
+    const needle = lastUserMsg.toLowerCase()
+    return needle.includes(a.title.toLowerCase()) ||
+           needle.includes(a.id.toLowerCase()) ||
+           needle.includes((a.subtitle || '').toLowerCase())
+  })
+
+  // Also include articles referenced in the last few assistant messages (for follow-ups)
+  const recentHistory = messages.slice(-6)
+  const contextArticles = allArticles.filter(a => {
+    return recentHistory.some(m => {
+      const t = (typeof m.content === 'string' ? m.content : '').toLowerCase()
+      return t.includes(a.title.toLowerCase()) || t.includes(a.id.toLowerCase())
+    })
+  })
+
+  // Merge — unique by id
+  const fullArticleIds = new Set([
+    ...referencedArticles.map(a => a.id),
+    ...contextArticles.map(a => a.id),
+  ])
+
+  // Always include one example article for house style reference (longest article by content)
+  const longestArticle = allArticles
+    .filter(a => !fullArticleIds.has(a.id))
+    .sort((a, b) => (b.content || '').length - (a.content || '').length)[0]
+  if (longestArticle) fullArticleIds.add(longestArticle.id)
+
+  // Build full content only for selected articles
+  const fullArticleContext = allArticles
+    .filter(a => fullArticleIds.has(a.id))
+    .map(a => {
+      const infoLines = Object.entries(a.infobox || {}).map(([k,v]) => `  ${k}: ${v}`).join('\n')
+      return `=== ${a.title} (${a.category}) [id: ${a.id}] ===
 subtitle: ${a.subtitle || '(none)'}
 infobox:
 ${infoLines || '  (none)'}
 content (raw HTML):
 ${a.content || '(empty)'}
 ---`
-  }).join('\n\n')
+    }).join('\n\n')
 
   const systemPrompt = `You are Archivist Mnemovex, a senior scribe of the Neverending Library in Melphö — the last great repository of knowledge in Qærn. You speak with dry scholarly wit, quiet melancholy, and great precision. You have survived six sieges. You have seen things.
 
@@ -35,7 +74,7 @@ Your role is to maintain the Qærn wiki on behalf of the Game Master (speep). Yo
 When proposing a wiki edit, always describe what you plan to do BEFORE doing it, then wait for confirmation.
 When the GM says something like "yes", "do it", "go ahead", "add it", "confirm", or similar — proceed with the edit.
 
-HOUSE STYLE — CRITICAL: The full raw HTML of every article is provided below. Before writing any content, study how existing articles are structured — their heading levels, paragraph style, use of <strong> for key terms, section organisation, tone, and length. All new or edited content must match this house style precisely. Do not invent new HTML patterns; mirror what you see.
+HOUSE STYLE — CRITICAL: Sample article HTML is provided below. Before writing any content, study how existing articles are structured — their heading levels, paragraph style, use of <strong> for key terms, section organisation, tone, and length. All new or edited content must match this house style precisely. Do not invent new HTML patterns; mirror what you see.
 
 CRITICAL RULE FOR EDITING: Each article has an "id" shown in brackets like [id: the-peace-king]. When editing an existing article, you MUST use that exact id in the wiki_action block. Never re-slugify or guess the id — a wrong id creates a duplicate instead of editing the original.
 
@@ -83,8 +122,11 @@ For MULTIPLE articles at once, use:
 Use the multi-action format whenever the GM asks you to update several articles at once. You may edit as many articles as needed in a single block.
 Only include the wiki_action or wiki_actions block when actually executing a confirmed change — never speculatively.
 
-Current wiki contents (full raw HTML included):
-${wikiContext || '(The wiki is empty.)'}
+All articles (index — title, id, category):
+${wikiIndex || '(The wiki is empty.)'}
+
+Full content of relevant articles (referenced in this conversation):
+${fullArticleContext || '(No specific articles loaded — if you need me to read a specific article, mention it by name.)'}
 
 Current date in Qærn: The Age of Wyldgrowth, Year 100.`
 
