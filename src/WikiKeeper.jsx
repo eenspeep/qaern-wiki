@@ -152,10 +152,24 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
     const newHistory = [...history, { role: 'user', content: text }]
 
     try {
+      // Build slim payload — only include full HTML for articles mentioned in this message
+      // This keeps the request body small regardless of wiki size
+      const msgLower = text.toLowerCase()
+      const articlesPayload = Object.fromEntries(
+        Object.entries(articles).map(([id, a]) => {
+          const mentioned = msgLower.includes(a.title.toLowerCase()) ||
+                            msgLower.includes(a.id.toLowerCase())
+          return [id, {
+            id: a.id, title: a.title, category: a.category,
+            subtitle: a.subtitle || '', infobox: a.infobox || {},
+            content: mentioned ? (a.content || '') : '',
+          }]
+        })
+      )
       const res = await fetch('/api/keeper', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newHistory, articles }),
+        body: JSON.stringify({ messages: newHistory, articles: articlesPayload }),
       })
       const data = await res.json()
 
