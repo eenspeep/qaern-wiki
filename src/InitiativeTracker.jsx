@@ -285,7 +285,7 @@ function MonsterGroupCard({ group, admin, phase, onUpdate, onRemove, onEndTurn }
 
 // ─── Player card ──────────────────────────────────────────────────────────────
 function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn }) {
-  const canEdit = admin || user?.displayName === player.name
+  const canEdit = !!user  // all logged-in users can check action boxes
   const isMe = user?.displayName === player.name
   const canEndTurn = phase === 'players' && !player.turnTaken && !player.dead && canEdit
   const upd = p => onUpdate({ ...player, ...p })
@@ -627,7 +627,8 @@ export default function InitiativeTracker({ user, onClose }) {
 
   return (
     <div style={{ position:'fixed', inset:0, zIndex:300, background:'#1a1a2a',
-      display:'flex', flexDirection:'column', fontFamily:"'Source Serif 4',Georgia,serif" }}>
+      display:'flex', flexDirection:'column', fontFamily:"'Source Serif 4',Georgia,serif",
+      overflowY: isMobile ? 'auto' : 'hidden' }}>
 
       {/* Header */}
       <div style={{ background:'#12121e', borderBottom:'1px solid #2a2a4a',
@@ -720,7 +721,7 @@ export default function InitiativeTracker({ user, onClose }) {
         <div style={{ flex:1,display:'flex',alignItems:'center',justifyContent:'center',
           color:'#555',fontStyle:'italic' }}>Loading encounter…</div>
       ) : (
-        <div style={{ flex:1,display:isMobile?'flex':'grid',flexDirection:isMobile?'column':undefined,gridTemplateColumns:isMobile?undefined:'1fr 1fr',overflow:'hidden' }}>
+        <div style={{ flex:isMobile?'none':1,display:isMobile?'flex':'grid',flexDirection:isMobile?'column':undefined,gridTemplateColumns:isMobile?undefined:'1fr 1fr',overflow:isMobile?'visible':'hidden',overflowY:isMobile?'auto':undefined,WebkitOverflowScrolling:'touch' }}>
           {/* Players */}
           <div style={{ borderRight:isMobile?'none':'1px solid #2a2a4a',borderBottom:isMobile?'2px solid #2a2a4a':'none',display:'flex',flexDirection:'column',overflow:isMobile?'visible':'hidden',flexShrink:isMobile?0:undefined }}>
             <div style={{ padding:'10px 16px 6px',background:'#12121e',borderBottom:'1px solid #2a2a4a',
