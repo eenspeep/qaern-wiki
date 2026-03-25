@@ -644,7 +644,10 @@ export default function InitiativeTracker({ user, onClose }) {
             {admin && <button onClick={()=>update({...state,round:round+1})}
               style={{ background:'none',border:'1px solid #3a3a5a',borderRadius:3,color:'#888',cursor:'pointer',fontSize:'0.75rem',padding:'2px 6px' }}>+</button>}
           </div>
-          <div style={{ display:'flex',gap:0,borderRadius:20,overflow:'hidden',border:'1px solid #3a3a5a' }}>
+          <div onClick={() => admin && state && update({ ...state, phase: phase === 'players' ? 'monsters' : 'players' })}
+            style={{ display:'flex',gap:0,borderRadius:20,overflow:'hidden',border:'1px solid #3a3a5a',
+              cursor: admin ? 'pointer' : 'default' }}
+            title={admin ? 'Click to switch sides' : ''}>
             <span style={{ fontSize:'0.7rem',padding:'3px 8px',background:phase==='players'?PLAYER_COLOR:'transparent',color:phase==='players'?'#fff':'#555',transition:'all 0.2s' }}>Players</span>
             <span style={{ fontSize:'0.7rem',padding:'3px 8px',background:phase==='monsters'?MONSTER_COLOR:'transparent',color:phase==='monsters'?'#fff':'#555',transition:'all 0.2s' }}>Monsters</span>
           </div>
