@@ -9,22 +9,40 @@ export function isAdmin(user) {
   return user?.displayName === ADMIN_USERNAME
 }
 
-// Parse a <wiki_action> block — handles both escaped and unescaped closing tags
+// Parse wiki action blocks — supports single <wiki_action> and multi <wiki_actions>
+// Returns an array of action objects, or null if none found, or [{_parseError}] on failure
 function parseWikiAction(text) {
+  // Try multi-action format first
+  const multiMatch = text.match(/<wiki_actions>\s*([\s\S]*?)\s*<\/wiki_actions>/)
+  if (multiMatch) {
+    try {
+      const parsed = JSON.parse(multiMatch[1])
+      return Array.isArray(parsed) ? parsed : [parsed]
+    } catch(e) {
+      try {
+        const fixed = multiMatch[1].replace(/,\s*}/g, '}').replace(/,\s*]/g, ']')
+        const parsed = JSON.parse(fixed)
+        return Array.isArray(parsed) ? parsed : [parsed]
+      } catch {}
+      return [{ _parseError: true, _raw: multiMatch[1].slice(0, 120), _message: e.message }]
+    }
+  }
+  // Fall back to single action
   const match = text.match(/<wiki_action>\s*([\s\S]*?)\s*<\/wiki_action>/)
   if (!match) return null
   try {
-    return JSON.parse(match[1])
+    return [JSON.parse(match[1])]
   } catch (e) {
-    // Try stripping trailing comma issues
-    try { return JSON.parse(match[1].replace(/,\s*}/, '}').replace(/,\s*]/, ']')) } catch {}
-    // Return a special error object so the UI can show a warning
-    return { _parseError: true, _raw: match[1].slice(0, 120), _message: e.message }
+    try { return [JSON.parse(match[1].replace(/,\s*}/, '}').replace(/,\s*]/, ']'))] } catch {}
+    return [{ _parseError: true, _raw: match[1].slice(0, 120), _message: e.message }]
   }
 }
 
 function stripWikiAction(text) {
-  return text.replace(/<wiki_action>[\s\S]*?<\/wiki_action>/, '').trim()
+  return text
+    .replace(/<wiki_actions>[\s\S]*?<\/wiki_actions>/, '')
+    .replace(/<wiki_action>[\s\S]*?<\/wiki_action>/, '')
+    .trim()
 }
 
 export default function WikiKeeper({ articles, user, onArticleChanged }) {
@@ -34,7 +52,7 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [historyLoaded, setHistoryLoaded] = useState(false)
-  const [pendingAction, setPendingAction] = useState(null)
+  const [pendingActions, setPendingActions] = useState(null)  // array of actions or null
   const bottomRef = useRef(null)
   const inputRef = useRef(null)
 
@@ -151,7 +169,7 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
       const displayText = stripWikiAction(rawText)
 
       // Check if the action block was found but failed to parse (truncated response)
-      if (action?._parseError) {
+      if (action?.[0]?._parseError) {
         const assistantMsg = { role: 'assistant', text: displayText, rawText, ts: Date.now() }
         const errorMsg = {
           role: 'assistant',
@@ -177,7 +195,7 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
         text: displayText,
         rawText,
         ts: Date.now(),
-        pendingAction: action || undefined,
+        pendingActions: action || undefined,
       }
       const updatedDisplay = [...newDisplay, assistantDisplayMsg]
 
@@ -185,7 +203,7 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
       setMessages(updatedDisplay)
 
       if (action) {
-        setPendingAction(action)
+        setPendingActions(action)
       }
 
       await saveHistory(updatedHistory, updatedDisplay)
@@ -203,13 +221,19 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
   }
 
   const confirmAction = async () => {
-    if (!pendingAction) return
+    if (!pendingActions?.length) return
     setLoading(true)
     try {
-      const result = await executeAction(pendingAction)
+      const results = []
+      for (const action of pendingActions) {
+        const result = await executeAction(action)
+        results.push(`**${action.title}** (${result})`)
+      }
       const confirmMsg = {
         role: 'assistant',
-        text: `*The quill scratches across parchment.* Article **${pendingAction.title}** has been ${result} in the Library.`,
+        text: pendingActions.length === 1
+          ? `*The quill scratches across parchment.* Article ${results[0]} has been committed to the Library.`
+          : `*The quill moves swiftly across ${pendingActions.length} folios.* The following have been committed to the Library:\n${results.map(r => `- ${r}`).join('\n')}`,
         ts: Date.now(),
         isConfirmation: true,
       }
@@ -226,12 +250,12 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
       setMessages(updatedDisplay)
       await saveHistory(history, updatedDisplay)
     }
-    setPendingAction(null)
+    setPendingActions(null)
     setLoading(false)
   }
 
   const dismissAction = () => {
-    setPendingAction(null)
+    setPendingActions(null)
     const dismissMsg = {
       role: 'assistant',
       text: '*Very well. The parchment is set aside. What else?*',
@@ -251,7 +275,7 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
     }
     setHistory([])
     setMessages([greeting])
-    setPendingAction(null)
+    setPendingActions(null)
     await saveHistory([], [greeting])
   }
 
@@ -335,16 +359,42 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
                     return chunk
                   })}
                 </div>
-                {m.pendingAction && pendingAction && (
-                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                    <button onClick={confirmAction} disabled={loading}
-                      style={{ padding: '5px 14px', border: 'none', borderRadius: 4, background: '#2e7d32', color: '#fff', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'Source Serif 4', Georgia, serif" }}>
-                      ✓ Commit to the Library
-                    </button>
-                    <button onClick={dismissAction} disabled={loading}
-                      style={{ padding: '5px 10px', border: '1px solid #4a3a3a', borderRadius: 4, background: 'none', color: '#a08080', cursor: 'pointer', fontSize: '0.78rem', fontFamily: "'Source Serif 4', Georgia, serif" }}>
-                      Discard
-                    </button>
+                {m.pendingActions && pendingActions && (
+                  <div style={{ marginTop: 8 }}>
+                    {/* Article queue preview */}
+                    <div style={{ background: '#1a2a1a', border: '1px solid #2d5a2d',
+                      borderRadius: 4, padding: '6px 10px', marginBottom: 6 }}>
+                      <div style={{ fontSize: '0.68rem', textTransform: 'uppercase',
+                        letterSpacing: '0.08em', color: '#4a7a4a', marginBottom: 4 }}>
+                        {pendingActions.length === 1 ? '1 article queued' : `${pendingActions.length} articles queued`}
+                      </div>
+                      {pendingActions.map((a, i) => (
+                        <div key={i} style={{ fontSize: '0.78rem', color: '#8ab88a',
+                          display: 'flex', gap: 6, alignItems: 'center', padding: '1px 0' }}>
+                          <span style={{ color: a.action === 'create' ? '#4caf50' : '#c8b87a',
+                            fontSize: '0.65rem', textTransform: 'uppercase', flexShrink: 0 }}>
+                            {a.action}
+                          </span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {a.title}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={confirmAction} disabled={loading}
+                        style={{ padding: '5px 14px', border: 'none', borderRadius: 4,
+                          background: '#2e7d32', color: '#fff', cursor: 'pointer',
+                          fontSize: '0.78rem', fontFamily: "'Source Serif 4', Georgia, serif" }}>
+                        ✓ Commit {pendingActions.length > 1 ? `All ${pendingActions.length}` : ''} to the Library
+                      </button>
+                      <button onClick={dismissAction} disabled={loading}
+                        style={{ padding: '5px 10px', border: '1px solid #4a3a3a', borderRadius: 4,
+                          background: 'none', color: '#a08080', cursor: 'pointer',
+                          fontSize: '0.78rem', fontFamily: "'Source Serif 4', Georgia, serif" }}>
+                        Discard
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
