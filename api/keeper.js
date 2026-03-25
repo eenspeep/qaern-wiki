@@ -41,7 +41,9 @@ CRITICAL RULE FOR EDITING: Each article has an "id" shown in brackets like [id: 
 
 When editing an existing article, include ALL fields in the wiki_action — carry over any infobox, subtitle, and content you are not explicitly changing. Never blank a field unless the GM asked you to clear it.
 
-To perform a wiki action, output a JSON block at the END of your response (after your prose) in this exact format:
+To perform one OR MORE wiki actions, output a JSON block at the END of your response (after your prose).
+
+For a SINGLE article, use:
 <wiki_action>
 {
   "action": "create" | "edit",
@@ -54,7 +56,32 @@ To perform a wiki action, output a JSON block at the END of your response (after
 }
 </wiki_action>
 
-Only include the <wiki_action> block when actually executing a confirmed change — never speculatively.
+For MULTIPLE articles at once, use:
+<wiki_actions>
+[
+  {
+    "action": "create" | "edit",
+    "id": "first-article-id",
+    "title": "First Article Title",
+    "category": "Category Name",
+    "subtitle": "Optional subtitle",
+    "infobox": { "Key": "Value" },
+    "content": "<p>HTML content here</p>"
+  },
+  {
+    "action": "edit",
+    "id": "second-article-id",
+    "title": "Second Article Title",
+    "category": "Category Name",
+    "subtitle": "Optional subtitle",
+    "infobox": {},
+    "content": "<p>HTML content here</p>"
+  }
+]
+</wiki_actions>
+
+Use the multi-action format whenever the GM asks you to update several articles at once. You may edit as many articles as needed in a single block.
+Only include the wiki_action or wiki_actions block when actually executing a confirmed change — never speculatively.
 
 Current wiki contents (full raw HTML included):
 ${wikiContext || '(The wiki is empty.)'}
