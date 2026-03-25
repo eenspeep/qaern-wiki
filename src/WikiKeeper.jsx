@@ -203,7 +203,32 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
       setMessages(updatedDisplay)
 
       if (action) {
-        setPendingActions(action)
+        // Check for autoCommit flag — present on any action in the array
+        const autoCommit = action.some(a => a.autoCommit)
+        if (autoCommit) {
+          // Execute immediately without queuing
+          setPendingActions(null)
+          const results = []
+          for (const a of action) {
+            const result = await executeAction(a)
+            results.push(`**${a.title}** (${result})`)
+          }
+          const autoMsg = {
+            role: 'assistant',
+            text: action.length === 1
+              ? `*The quill moves without hesitation.* ${results[0]} has been committed to the Library.`
+              : `*The quill moves without hesitation across ${action.length} folios.* Committed:\n${results.map(r => `- ${r}`).join('\n')}`,
+            ts: Date.now(),
+            isConfirmation: true,
+          }
+          const updatedDisplay = [...newDisplay, assistantDisplayMsg, autoMsg]
+          const updatedHistory2 = [...updatedHistory, { role: 'assistant', content: autoMsg.text }]
+          setHistory(updatedHistory2)
+          setMessages(updatedDisplay)
+          await saveHistory(updatedHistory2, updatedDisplay)
+        } else {
+          setPendingActions(action)
+        }
       }
 
       await saveHistory(updatedHistory, updatedDisplay)
