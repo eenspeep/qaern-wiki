@@ -736,7 +736,7 @@ export default function InitiativeTracker({ user, onClose }) {
                 <PlayerCard key={p.id} player={p} phase={phase} user={user} admin={admin}
                   onUpdate={updatePlayer} onRemove={()=>removePlayer(p.id)} onEndTurn={()=>playerEndTurn(p.id)}/>
               ))}
-              {admin&&(
+              {user&&(
                 <div style={{ display:'flex',gap:6,marginTop:8 }}>
                   <input value={newPlayerName} onChange={e=>setNewPlayerName(e.target.value)}
                     onKeyDown={e=>e.key==='Enter'&&addPlayer()} placeholder='Add player…'
