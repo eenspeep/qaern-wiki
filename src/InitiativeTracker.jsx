@@ -19,12 +19,14 @@ const BLANK_STATE = {
   phase: 'players',  // 'players' | 'monsters'
   players: [],
   monsterGroups: [],
+  malice: 0,
 }
 
 const BLANK_PLAYER = (name) => ({
   id: uid(), name,
   triggered: false, main: false, maneuver: false, move: false,
   heroicResource: false,
+  victories: 0,
   turnTaken: false, dead: false,
 })
 
@@ -324,7 +326,8 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
         <ActionBox label='Move' checked={player.move}
           onChange={v => canEdit && upd({ move:v })} disabled={!canEdit}/>
       </div>
-      <div style={{ marginTop:4, paddingTop:4, borderTop:'1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ marginTop:4, paddingTop:4, borderTop:'1px solid rgba(255,255,255,0.08)',
+        display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
         <label style={{ display:'flex', alignItems:'center', gap:5, cursor: canEdit?'pointer':'default',
           fontSize:'0.75rem', userSelect:'none',
           color: player.heroicResource ? '#c8b87a' : '#666' }}>
@@ -333,6 +336,15 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
             disabled={!canEdit}
             style={{ accentColor:'#c8b87a', width:13, height:13 }}/>
           Heroic Resource
+        </label>
+        <label style={{ display:'flex', alignItems:'center', gap:5, fontSize:'0.75rem',
+          color:'#7a9ac8', userSelect:'none' }}>
+          <span>Victories</span>
+          <input type='number' min={0} max={99} value={player.victories||0}
+            onChange={e => onUpdate({ ...player, victories: Math.max(0, parseInt(e.target.value)||0) })}
+            style={{ width:38, padding:'1px 4px', borderRadius:3, textAlign:'center',
+              border:'1px solid #2a3a5a', background:'#252540', color:'#7a9ac8',
+              fontSize:'0.75rem', fontFamily:"'Source Serif 4',Georgia,serif" }}/>
         </label>
       </div>
 
@@ -565,7 +577,7 @@ export default function InitiativeTracker({ user, onClose }) {
       color:'#888', fontStyle:'italic', fontFamily:"'Source Serif 4',Georgia,serif" }}>Loading…</div>
   )
 
-  const { round, phase, players, monsterGroups } = state || BLANK_STATE
+  const { round, phase, players, monsterGroups, malice = 0 } = state || BLANK_STATE
   const allPlayersDone = players.filter(p=>!p.dead).every(p=>p.turnTaken)
   const allMonstersDone = monsterGroups.every(g=>g.turnTaken)
 
@@ -743,6 +755,43 @@ export default function InitiativeTracker({ user, onClose }) {
               {phase==='monsters'&&allMonstersDone&&<span style={{ fontSize:'0.65rem',color:'#888',fontStyle:'italic',textTransform:'none',letterSpacing:0 }}>all done</span>}
             </div>
             <div style={{ flex:isMobile?'none':1,overflowY:isMobile?'visible':'auto',padding:'10px 12px' }}>
+              {/* Malice card — always present, speep-only edit */}
+              <div style={{ borderRadius:6, marginBottom:10,
+                background:'#1a0808', border:'2px solid #7a0000',
+                boxShadow:'0 0 16px rgba(180,0,0,0.25)',
+                padding:'10px 14px', display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{ fontFamily:"'IM Fell English',serif", fontSize:'1.4rem',
+                  color:'#c0392b', letterSpacing:'0.12em', textShadow:'0 0 12px rgba(192,57,43,0.6)',
+                  flexShrink:0, userSelect:'none' }}>
+                  MALICE
+                </div>
+                <div style={{ flex:1 }}/>
+                {admin && (
+                  <button onClick={() => update({ ...state, malice: Math.max(0, malice - 1) })}
+                    style={{ width:28, height:28, border:'1px solid #7a0000', borderRadius:4,
+                      background:'#2a0808', color:'#c0392b', cursor:'pointer',
+                      fontSize:'1rem', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    −
+                  </button>
+                )}
+                <div style={{ minWidth:36, textAlign:'center',
+                  fontFamily:"'IM Fell English',serif", fontSize:'1.8rem',
+                  fontWeight:700, color:'#e74c3c',
+                  textShadow:'0 0 10px rgba(231,76,60,0.7)' }}>
+                  {malice}
+                </div>
+                {admin && (
+                  <button onClick={() => update({ ...state, malice: malice + 1 })}
+                    style={{ width:28, height:28, border:'1px solid #7a0000', borderRadius:4,
+                      background:'#2a0808', color:'#c0392b', cursor:'pointer',
+                      fontSize:'1rem', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    +
+                  </button>
+                )}
+                {!admin && (
+                  <div style={{ minWidth:28 }}/>
+                )}
+              </div>
               {monsterGroups.map(g=>(
                 <MonsterGroupCard key={g.id} group={g} admin={admin} phase={phase}
                   onUpdate={updateGroup} onRemove={()=>removeGroup(g.id)} onEndTurn={()=>monsterGroupEndTurn(g.id)}/>
