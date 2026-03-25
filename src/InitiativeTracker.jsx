@@ -24,6 +24,7 @@ const BLANK_STATE = {
 const BLANK_PLAYER = (name) => ({
   id: uid(), name,
   triggered: false, main: false, maneuver: false, move: false,
+  heroicResource: false,
   turnTaken: false, dead: false,
 })
 
@@ -323,6 +324,17 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
         <ActionBox label='Move' checked={player.move}
           onChange={v => canEdit && upd({ move:v })} disabled={!canEdit}/>
       </div>
+      <div style={{ marginTop:4, paddingTop:4, borderTop:'1px solid rgba(255,255,255,0.08)' }}>
+        <label style={{ display:'flex', alignItems:'center', gap:5, cursor: canEdit?'pointer':'default',
+          fontSize:'0.75rem', userSelect:'none',
+          color: player.heroicResource ? '#c8b87a' : '#666' }}>
+          <input type='checkbox' checked={player.heroicResource||false}
+            onChange={e => canEdit && upd({ heroicResource: e.target.checked })}
+            disabled={!canEdit}
+            style={{ accentColor:'#c8b87a', width:13, height:13 }}/>
+          Heroic Resource
+        </label>
+      </div>
 
       {canEndTurn && (
         <button onClick={onEndTurn}
@@ -526,7 +538,7 @@ export default function InitiativeTracker({ user, onClose }) {
     const templateState = {
       ...state,
       round: 1, phase: 'players',
-      players: state.players.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, dead:false })),
+      players: state.players.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, heroicResource:false, dead:false })),
       monsterGroups: state.monsterGroups.map(g => ({ ...g, turnTaken:false,
         monsters: g.monsters.map(m => ({ ...m, hp:m.maxHp, triggered:false, dead:false,
           ...(m.tier==='minion' ? {hp:(m.count||1)*(m.hpPer||1)} : {}) })) })),
@@ -563,7 +575,7 @@ export default function InitiativeTracker({ user, onClose }) {
     )
     const allDone = newPlayers.filter(p=>!p.dead).every(p=>p.turnTaken)
     if (allDone && monsterGroups.every(g=>g.turnTaken)) {
-      const newRoundPlayers = newPlayers.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false }))
+      const newRoundPlayers = newPlayers.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, heroicResource:false }))
       const resetGroups = monsterGroups.map(g => ({ ...g, turnTaken:false, monsters:g.monsters.map(m=>({...m,triggered:false})) }))
       update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups })
     } else {
@@ -576,7 +588,7 @@ export default function InitiativeTracker({ user, onClose }) {
     const allPDone = players.filter(p=>!p.dead).every(p=>p.turnTaken)
     const allMDone = newGroups.every(g=>g.turnTaken)
     if (allPDone && allMDone) {
-      const newRoundPlayers = players.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false }))
+      const newRoundPlayers = players.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, heroicResource:false }))
       const resetGroups = newGroups.map(g => ({ ...g, turnTaken:false, monsters:g.monsters.map(m=>({...m,triggered:false})) }))
       update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups })
     } else {
