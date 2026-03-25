@@ -19,7 +19,8 @@ export default async function handler(req, res) {
   ).join('\n')
 
   // Detect which articles are referenced in the latest user message
-  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.content || ''
+  const contentToString = (c) => typeof c === 'string' ? c : Array.isArray(c) ? c.map(p => p.text || '').join(' ') : ''
+  const lastUserMsg = contentToString([...messages].reverse().find(m => m.role === 'user')?.content || '')
   const referencedArticles = allArticles.filter(a => {
     const needle = lastUserMsg.toLowerCase()
     return needle.includes(a.title.toLowerCase()) ||
@@ -31,7 +32,7 @@ export default async function handler(req, res) {
   const recentHistory = messages.slice(-6)
   const contextArticles = allArticles.filter(a => {
     return recentHistory.some(m => {
-      const t = (typeof m.content === 'string' ? m.content : '').toLowerCase()
+      const t = contentToString(m.content).toLowerCase()
       return t.includes(a.title.toLowerCase()) || t.includes(a.id.toLowerCase())
     })
   })
