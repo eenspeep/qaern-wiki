@@ -5,12 +5,11 @@
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  try {
-    const { messages, articles } = req.body
-    if (!messages) return res.status(400).json({ error: 'Missing messages' })
+  const { messages, articles } = req.body
+  if (!messages) return res.status(400).json({ error: 'Missing messages' })
 
-    const apiKey = process.env.ANTHROPIC_API_KEY
-    if (!apiKey) return res.status(500).json({ error: 'API key not configured' })
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return res.status(500).json({ error: 'API key not configured' })
 
   const allArticles = Object.values(articles || {})
 
@@ -155,8 +154,5 @@ Current date in Qærn: The Age of Wyldgrowth, Year 100.`
     res.status(200).json(data)
   } catch (err) {
     res.status(500).json({ error: err.message })
-  }
-  } catch (outerErr) {
-    res.status(500).json({ error: 'Handler error: ' + outerErr.message })
   }
 }
