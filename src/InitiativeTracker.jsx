@@ -589,7 +589,8 @@ export default function InitiativeTracker({ user, onClose }) {
     if (allDone && monsterGroups.every(g=>g.turnTaken)) {
       const newRoundPlayers = newPlayers.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, heroicResource:false }))
       const resetGroups = monsterGroups.map(g => ({ ...g, turnTaken:false, monsters:g.monsters.map(m=>({...m,triggered:false})) }))
-      update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups })
+      const maliceTick1 = malice + (round + 1) + newRoundPlayers.filter(p=>!p.dead).length
+      update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups, malice:maliceTick1 })
     } else {
       update({ ...state, phase:'monsters', players:newPlayers })
     }
@@ -602,7 +603,8 @@ export default function InitiativeTracker({ user, onClose }) {
     if (allPDone && allMDone) {
       const newRoundPlayers = players.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, heroicResource:false }))
       const resetGroups = newGroups.map(g => ({ ...g, turnTaken:false, monsters:g.monsters.map(m=>({...m,triggered:false})) }))
-      update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups })
+      const maliceTick2 = malice + (round + 1) + newRoundPlayers.filter(p=>!p.dead).length
+      update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups, malice:maliceTick2 })
     } else {
       update({ ...state, phase:'players', monsterGroups:newGroups })
     }
@@ -767,12 +769,27 @@ export default function InitiativeTracker({ user, onClose }) {
                 </div>
                 <div style={{ flex:1 }}/>
                 {admin && (
-                  <button onClick={() => update({ ...state, malice: Math.max(0, malice - 1) })}
-                    style={{ width:28, height:28, border:'1px solid #7a0000', borderRadius:4,
-                      background:'#2a0808', color:'#c0392b', cursor:'pointer',
-                      fontSize:'1rem', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                    −
-                  </button>
+                  <>
+                    <button onClick={() => {
+                      const livePlayers = players.filter(p=>!p.dead)
+                      if (!livePlayers.length) return
+                      const avg = Math.round(livePlayers.reduce((s,p)=>s+(p.victories||0),0) / livePlayers.length)
+                      update({ ...state, malice: avg })
+                    }}
+                      title='Set to average victories per hero'
+                      style={{ padding:'2px 7px', border:'1px solid #7a0000', borderRadius:4,
+                        background:'#2a0808', color:'#c0392b', cursor:'pointer',
+                        fontSize:'0.65rem', fontWeight:700, letterSpacing:'0.08em',
+                        fontFamily:"'Source Serif 4',Georgia,serif" }}>
+                      SET
+                    </button>
+                    <button onClick={() => update({ ...state, malice: Math.max(0, malice - 1) })}
+                      style={{ width:28, height:28, border:'1px solid #7a0000', borderRadius:4,
+                        background:'#2a0808', color:'#c0392b', cursor:'pointer',
+                        fontSize:'1rem', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                      −
+                    </button>
+                  </>
                 )}
                 <div style={{ minWidth:36, textAlign:'center',
                   fontFamily:"'IM Fell English',serif", fontSize:'1.8rem',
