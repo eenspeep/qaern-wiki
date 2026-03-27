@@ -28,6 +28,7 @@ const BLANK_PLAYER = (name) => ({
   heroicResource: false,
   victories: 0,
   turnTaken: false, dead: false,
+  conditions: [],
 })
 
 const BLANK_GROUP = (name) => ({
@@ -48,7 +49,28 @@ const BLANK_MONSTER = (name, hp) => ({
   extraTurns: 0,
   villain1: false, villain2: false, villain3: false,
   dead: false,
+  conditions: [],
 })
+
+const CONDITIONS = [
+  { id: 'bleeding',   label: 'Bleeding',   color: '#c0392b', desc: "Can't regain Stamina." },
+  { id: 'dazed',      label: 'Dazed',      color: '#9b59b6', desc: 'Can only move, maneuver, or act — just one. No triggered actions.' },
+  { id: 'frightened', label: 'Frightened', color: '#e2b400', desc: 'Bane vs fear source; they have Edge vs you. Can\'t move closer.' },
+  { id: 'grabbed',    label: 'Grabbed',    color: '#7f5539', desc: 'Speed 0, can\'t be force moved. Bane on attacks not targeting grabber.' },
+  { id: 'prone',      label: 'Prone',      color: '#607d8b', desc: 'Bane on attacks; melee attacks vs you have Edge. Crawling costs +1 sq.' },
+  { id: 'restrained', label: 'Restrained', color: '#6a1b9a', desc: 'Speed 0, can\'t be force moved. Bane on attacks; attacks vs you have Edge.' },
+  { id: 'slowed',     label: 'Slowed',     color: '#1976d2', desc: 'Speed halved.' },
+  { id: 'taunted',    label: 'Taunted',    color: '#e65100', desc: 'Double Bane on attacks not targeting the creature who taunted you.' },
+  { id: 'weakened',   label: 'Weakened',   color: '#546e7a', desc: 'Power Rolls and Tests (not Resistance) have a Bane.' },
+]
+
+// Returns box-shadow string for active condition stripes (inset left edge, 3px per condition)
+const conditionBoxShadow = (conditions = [], baseShadow = '0 1px 4px rgba(0,0,0,0.06)') => {
+  const active = CONDITIONS.filter(c => conditions.includes(c.id))
+  if (!active.length) return baseShadow
+  const stripes = active.slice(0, 5).map((c, i) => `inset ${(i + 1) * 3}px 0 0 ${c.color}`).join(', ')
+  return `${stripes}, ${baseShadow}`
+}
 
 // Pure turn-logic helpers — used both for optimistic local updates and Firestore transactions
 const applyPlayerEndTurn = (s, playerId) => {
@@ -108,16 +130,69 @@ function ActionBox({ label, checked, onChange, disabled }) {
   )
 }
 
+// ─── Condition picker ─────────────────────────────────────────────────────────
+function ConditionPicker({ conditions = [], onChange, editable, accentColor }) {
+  const [open, setOpen] = useState(false)
+  const active = CONDITIONS.filter(c => conditions.includes(c.id))
+
+  const toggle = (id) => {
+    if (!editable) return
+    onChange(conditions.includes(id) ? conditions.filter(c => c !== id) : [...conditions, id])
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+        <button onClick={() => setOpen(o => !o)}
+          style={{ background: 'none', border: `1px solid ${open ? accentColor : 'rgba(128,128,128,0.3)'}`,
+            borderRadius: 3, cursor: 'pointer', padding: '1px 6px',
+            fontSize: '0.65rem', color: open ? accentColor : '#888',
+            fontFamily: "'Source Serif 4',Georgia,serif", lineHeight: '1.6' }}>
+          {open ? '▲' : '▼'} Conditions{active.length > 0 ? ` (${active.length})` : ''}
+        </button>
+        {active.map(c => (
+          <span key={c.id} title={c.desc}
+            style={{ fontSize: '0.62rem', padding: '1px 5px', borderRadius: 10,
+              border: `1px solid ${c.color}`, color: c.color,
+              fontFamily: "'Source Serif 4',Georgia,serif", lineHeight: '1.6',
+              cursor: editable ? 'pointer' : 'default', userSelect: 'none' }}
+            onClick={() => editable && toggle(c.id)}>
+            {c.label}
+          </span>
+        ))}
+      </div>
+      {open && (
+        <div style={{ marginTop: 5, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '3px 6px' }}>
+          {CONDITIONS.map(c => (
+            <label key={c.id} title={c.desc}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: editable ? 'pointer' : 'default',
+                fontSize: '0.67rem', color: conditions.includes(c.id) ? c.color : '#888',
+                userSelect: 'none', fontFamily: "'Source Serif 4',Georgia,serif" }}>
+              <input type='checkbox' checked={conditions.includes(c.id)}
+                onChange={() => toggle(c.id)} disabled={!editable}
+                style={{ accentColor: c.color, width: 11, height: 11 }}/>
+              {c.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Monster row ──────────────────────────────────────────────────────────────
 function MonsterRow({ monster, admin, onUpdate, onRemove }) {
   const upd = p => onUpdate({ ...monster, ...p })
   const isMinion = monster.tier === 'minion'
   const isLeader = monster.tier === 'leader'
   const totalHp = isMinion ? (monster.count || 1) * (monster.hpPer || 1) : monster.maxHp
+  const conditions = monster.conditions || []
 
   return (
     <div style={{ padding: '7px 8px', borderRadius: 4, background: 'rgba(0,0,0,0.06)',
-      marginBottom: 5, opacity: monster.dead ? 0.4 : 1 }}>
+      marginBottom: 5, opacity: monster.dead ? 0.4 : 1,
+      boxShadow: conditionBoxShadow(conditions),
+      transition: 'box-shadow 0.2s' }}>
 
       {/* Name + tier + dead toggle */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
@@ -225,6 +300,11 @@ function MonsterRow({ monster, admin, onUpdate, onRemove }) {
           Villain actions: {[1,2,3].filter(n=>monster[`villain${n}`]).join(', ')}
         </div>
       )}
+
+      <ConditionPicker conditions={conditions}
+        onChange={v => upd({ conditions: v })}
+        editable={admin}
+        accentColor={MONSTER_COLOR}/>
     </div>
   )
 }
@@ -322,13 +402,15 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
   const canEndTurn = phase === 'players' && !player.turnTaken && !player.dead && canEdit
   const upd = p => onUpdate({ ...player, ...p })
 
+  const conditions = player.conditions || []
+
   return (
     <div style={{ borderRadius:6, border:`2px solid ${player.turnTaken ? '#ccc' : '#ccc9c0'}`,
       background: player.turnTaken ? '#e8e8e8' : '#faf9f6',
       padding:'10px 12px', marginBottom:8,
-      boxShadow:'0 1px 4px rgba(0,0,0,0.06)',
+      boxShadow: conditionBoxShadow(conditions, '0 1px 4px rgba(0,0,0,0.06)'),
       opacity: player.dead ? 0.4 : player.turnTaken ? 0.55 : 1,
-      transition: 'opacity 0.2s, background 0.2s' }}>
+      transition: 'opacity 0.2s, background 0.2s, box-shadow 0.2s' }}>
 
       <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
         <span style={{ fontFamily:"'IM Fell English',serif", fontSize:'0.95rem',
@@ -379,6 +461,11 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
               fontSize:'0.75rem', fontFamily:"'Source Serif 4',Georgia,serif" }}/>
         </label>
       </div>
+
+      <ConditionPicker conditions={conditions}
+        onChange={v => upd({ conditions: v })}
+        editable={canEdit}
+        accentColor={PLAYER_COLOR}/>
 
       {canEndTurn && (
         <button onClick={onEndTurn}
