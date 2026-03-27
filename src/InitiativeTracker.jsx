@@ -5,7 +5,7 @@ function useIsMobile(bp=680){
   useEffect(()=>{const h=()=>setM(window.innerWidth<bp);window.addEventListener('resize',h);return()=>window.removeEventListener('resize',h)},[bp])
   return m
 }
-import { doc, onSnapshot, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, onSnapshot, setDoc, getDoc, serverTimestamp, runTransaction } from 'firebase/firestore'
 import { db } from './firebase'
 
 const INIT_DOC = 'initiative/state'
@@ -49,6 +49,38 @@ const BLANK_MONSTER = (name, hp) => ({
   villain1: false, villain2: false, villain3: false,
   dead: false,
 })
+
+// Pure turn-logic helpers — used both for optimistic local updates and Firestore transactions
+const applyPlayerEndTurn = (s, playerId) => {
+  const { round, players, monsterGroups, malice = 0 } = s
+  const newPlayers = players.map(p =>
+    p.id === playerId ? { ...p, turnTaken: true, main: false, maneuver: false, move: false } : p
+  )
+  const allDone = newPlayers.filter(p => !p.dead).every(p => p.turnTaken)
+  if (allDone && monsterGroups.every(g => g.turnTaken)) {
+    const newRoundPlayers = newPlayers.map(p => ({ ...p, turnTaken: false, triggered: false, main: false, maneuver: false, move: false, heroicResource: false }))
+    const resetGroups = monsterGroups.map(g => ({ ...g, turnTaken: false, monsters: g.monsters.map(m => ({ ...m, triggered: false })) }))
+    const maliceTick = malice + (round + 1) + newRoundPlayers.filter(p => !p.dead).length
+    return { ...s, round: round + 1, phase: 'players', players: newRoundPlayers, monsterGroups: resetGroups, malice: maliceTick }
+  } else {
+    return { ...s, phase: 'monsters', players: newPlayers }
+  }
+}
+
+const applyMonsterGroupEndTurn = (s, groupId) => {
+  const { round, players, monsterGroups, malice = 0 } = s
+  const newGroups = monsterGroups.map(g => g.id === groupId ? { ...g, turnTaken: true } : g)
+  const allPDone = players.filter(p => !p.dead).every(p => p.turnTaken)
+  const allMDone = newGroups.every(g => g.turnTaken)
+  if (allPDone && allMDone) {
+    const newRoundPlayers = players.map(p => ({ ...p, turnTaken: false, triggered: false, main: false, maneuver: false, move: false, heroicResource: false }))
+    const resetGroups = newGroups.map(g => ({ ...g, turnTaken: false, monsters: g.monsters.map(m => ({ ...m, triggered: false })) }))
+    const maliceTick = malice + (round + 1) + newRoundPlayers.filter(p => !p.dead).length
+    return { ...s, round: round + 1, phase: 'players', players: newRoundPlayers, monsterGroups: resetGroups, malice: maliceTick }
+  } else {
+    return { ...s, phase: 'players', monsterGroups: newGroups }
+  }
+}
 
 const PLAYER_COLOR  = '#1b4f72'
 const MONSTER_COLOR = '#7a2020'
@@ -581,33 +613,37 @@ export default function InitiativeTracker({ user, onClose }) {
   const allPlayersDone = players.filter(p=>!p.dead).every(p=>p.turnTaken)
   const allMonstersDone = monsterGroups.every(g=>g.turnTaken)
 
-  const playerEndTurn = (playerId) => {
-    const newPlayers = players.map(p =>
-      p.id === playerId ? { ...p, turnTaken:true, main:false, maneuver:false, move:false } : p
-    )
-    const allDone = newPlayers.filter(p=>!p.dead).every(p=>p.turnTaken)
-    if (allDone && monsterGroups.every(g=>g.turnTaken)) {
-      const newRoundPlayers = newPlayers.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, heroicResource:false }))
-      const resetGroups = monsterGroups.map(g => ({ ...g, turnTaken:false, monsters:g.monsters.map(m=>({...m,triggered:false})) }))
-      const maliceTick1 = malice + (round + 1) + newRoundPlayers.filter(p=>!p.dead).length
-      update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups, malice:maliceTick1 })
-    } else {
-      update({ ...state, phase:'monsters', players:newPlayers })
-    }
+  const playerEndTurn = async (playerId) => {
+    // Optimistic local update for snappy UI
+    setState(s => applyPlayerEndTurn(s, playerId))
+    // Transactional Firestore write — reads the latest server state before writing,
+    // preventing stale closure data from overwriting concurrent changes by other players
+    const ref = doc(db, 'initiative/tab-' + activeTabId)
+    writing.current = Date.now()
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref)
+        const s = snap.exists() ? snap.data() : { ...BLANK_STATE }
+        tx.set(ref, { ...applyPlayerEndTurn(s, playerId), updatedAt: serverTimestamp() })
+      })
+    } catch (e) { console.error('playerEndTurn transaction failed:', e) }
+    finally { setTimeout(() => { writing.current = 0 }, 500) }
   }
 
-  const monsterGroupEndTurn = (groupId) => {
-    const newGroups = monsterGroups.map(g => g.id===groupId ? { ...g, turnTaken:true } : g)
-    const allPDone = players.filter(p=>!p.dead).every(p=>p.turnTaken)
-    const allMDone = newGroups.every(g=>g.turnTaken)
-    if (allPDone && allMDone) {
-      const newRoundPlayers = players.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, heroicResource:false }))
-      const resetGroups = newGroups.map(g => ({ ...g, turnTaken:false, monsters:g.monsters.map(m=>({...m,triggered:false})) }))
-      const maliceTick2 = malice + (round + 1) + newRoundPlayers.filter(p=>!p.dead).length
-      update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups, malice:maliceTick2 })
-    } else {
-      update({ ...state, phase:'players', monsterGroups:newGroups })
-    }
+  const monsterGroupEndTurn = async (groupId) => {
+    // Optimistic local update for snappy UI
+    setState(s => applyMonsterGroupEndTurn(s, groupId))
+    // Transactional Firestore write — reads the latest server state before writing
+    const ref = doc(db, 'initiative/tab-' + activeTabId)
+    writing.current = Date.now()
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref)
+        const s = snap.exists() ? snap.data() : { ...BLANK_STATE }
+        tx.set(ref, { ...applyMonsterGroupEndTurn(s, groupId), updatedAt: serverTimestamp() })
+      })
+    } catch (e) { console.error('monsterGroupEndTurn transaction failed:', e) }
+    finally { setTimeout(() => { writing.current = 0 }, 500) }
   }
 
   const updatePlayer = upd => update({ ...state, players:players.map(p=>p.id===upd.id?upd:p) })
