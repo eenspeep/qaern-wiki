@@ -5,7 +5,7 @@ function useIsMobile(bp=680){
   useEffect(()=>{const h=()=>setM(window.innerWidth<bp);window.addEventListener('resize',h);return()=>window.removeEventListener('resize',h)},[bp])
   return m
 }
-import { doc, onSnapshot, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, onSnapshot, setDoc, getDoc, serverTimestamp, runTransaction } from 'firebase/firestore'
 import { db } from './firebase'
 
 const INIT_DOC = 'initiative/state'
@@ -28,6 +28,7 @@ const BLANK_PLAYER = (name) => ({
   heroicResource: false,
   victories: 0,
   turnTaken: false, dead: false,
+  conditions: [],
 })
 
 const BLANK_GROUP = (name) => ({
@@ -48,7 +49,60 @@ const BLANK_MONSTER = (name, hp) => ({
   extraTurns: 0,
   villain1: false, villain2: false, villain3: false,
   dead: false,
+  conditions: [],
 })
+
+const CONDITIONS = [
+  { id: 'bleeding',   label: 'Bleeding',   color: '#c0392b', desc: "Can't regain Stamina." },
+  { id: 'dazed',      label: 'Dazed',      color: '#9b59b6', desc: 'Can only move, maneuver, or act — just one. No triggered actions.' },
+  { id: 'frightened', label: 'Frightened', color: '#e2b400', desc: 'Bane vs fear source; they have Edge vs you. Can\'t move closer.' },
+  { id: 'grabbed',    label: 'Grabbed',    color: '#7f5539', desc: 'Speed 0, can\'t be force moved. Bane on attacks not targeting grabber.' },
+  { id: 'prone',      label: 'Prone',      color: '#607d8b', desc: 'Bane on attacks; melee attacks vs you have Edge. Crawling costs +1 sq.' },
+  { id: 'restrained', label: 'Restrained', color: '#6a1b9a', desc: 'Speed 0, can\'t be force moved. Bane on attacks; attacks vs you have Edge.' },
+  { id: 'slowed',     label: 'Slowed',     color: '#1976d2', desc: 'Speed halved.' },
+  { id: 'taunted',    label: 'Taunted',    color: '#e65100', desc: 'Double Bane on attacks not targeting the creature who taunted you.' },
+  { id: 'weakened',   label: 'Weakened',   color: '#546e7a', desc: 'Power Rolls and Tests (not Resistance) have a Bane.' },
+]
+
+// Returns box-shadow string for active condition stripes (inset left edge, 3px per condition)
+const conditionBoxShadow = (conditions = [], baseShadow = '0 1px 4px rgba(0,0,0,0.06)') => {
+  const active = CONDITIONS.filter(c => conditions.includes(c.id))
+  if (!active.length) return baseShadow
+  const stripes = active.slice(0, 5).map((c, i) => `inset ${(i + 1) * 3}px 0 0 ${c.color}`).join(', ')
+  return `${stripes}, ${baseShadow}`
+}
+
+// Pure turn-logic helpers — used both for optimistic local updates and Firestore transactions
+const applyPlayerEndTurn = (s, playerId) => {
+  const { round, players, monsterGroups, malice = 0 } = s
+  const newPlayers = players.map(p =>
+    p.id === playerId ? { ...p, turnTaken: true, main: false, maneuver: false, move: false } : p
+  )
+  const allDone = newPlayers.filter(p => !p.dead).every(p => p.turnTaken)
+  if (allDone && monsterGroups.every(g => g.turnTaken)) {
+    const newRoundPlayers = newPlayers.map(p => ({ ...p, turnTaken: false, triggered: false, main: false, maneuver: false, move: false, heroicResource: false }))
+    const resetGroups = monsterGroups.map(g => ({ ...g, turnTaken: false, monsters: g.monsters.map(m => ({ ...m, triggered: false })) }))
+    const maliceTick = malice + (round + 1) + newRoundPlayers.filter(p => !p.dead).length
+    return { ...s, round: round + 1, phase: 'players', players: newRoundPlayers, monsterGroups: resetGroups, malice: maliceTick }
+  } else {
+    return { ...s, phase: 'monsters', players: newPlayers }
+  }
+}
+
+const applyMonsterGroupEndTurn = (s, groupId) => {
+  const { round, players, monsterGroups, malice = 0 } = s
+  const newGroups = monsterGroups.map(g => g.id === groupId ? { ...g, turnTaken: true } : g)
+  const allPDone = players.filter(p => !p.dead).every(p => p.turnTaken)
+  const allMDone = newGroups.every(g => g.turnTaken)
+  if (allPDone && allMDone) {
+    const newRoundPlayers = players.map(p => ({ ...p, turnTaken: false, triggered: false, main: false, maneuver: false, move: false, heroicResource: false }))
+    const resetGroups = newGroups.map(g => ({ ...g, turnTaken: false, monsters: g.monsters.map(m => ({ ...m, triggered: false })) }))
+    const maliceTick = malice + (round + 1) + newRoundPlayers.filter(p => !p.dead).length
+    return { ...s, round: round + 1, phase: 'players', players: newRoundPlayers, monsterGroups: resetGroups, malice: maliceTick }
+  } else {
+    return { ...s, phase: 'players', monsterGroups: newGroups }
+  }
+}
 
 const PLAYER_COLOR  = '#1b4f72'
 const MONSTER_COLOR = '#7a2020'
@@ -76,16 +130,69 @@ function ActionBox({ label, checked, onChange, disabled }) {
   )
 }
 
+// ─── Condition picker ─────────────────────────────────────────────────────────
+function ConditionPicker({ conditions = [], onChange, editable, accentColor }) {
+  const [open, setOpen] = useState(false)
+  const active = CONDITIONS.filter(c => conditions.includes(c.id))
+
+  const toggle = (id) => {
+    if (!editable) return
+    onChange(conditions.includes(id) ? conditions.filter(c => c !== id) : [...conditions, id])
+  }
+
+  return (
+    <div style={{ marginTop: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+        <button onClick={() => setOpen(o => !o)}
+          style={{ background: 'none', border: `1px solid ${open ? accentColor : 'rgba(128,128,128,0.3)'}`,
+            borderRadius: 3, cursor: 'pointer', padding: '1px 6px',
+            fontSize: '0.65rem', color: open ? accentColor : '#888',
+            fontFamily: "'Source Serif 4',Georgia,serif", lineHeight: '1.6' }}>
+          {open ? '▲' : '▼'} Conditions{active.length > 0 ? ` (${active.length})` : ''}
+        </button>
+        {active.map(c => (
+          <span key={c.id} title={c.desc}
+            style={{ fontSize: '0.62rem', padding: '1px 5px', borderRadius: 10,
+              border: `1px solid ${c.color}`, color: c.color,
+              fontFamily: "'Source Serif 4',Georgia,serif", lineHeight: '1.6',
+              cursor: editable ? 'pointer' : 'default', userSelect: 'none' }}
+            onClick={() => editable && toggle(c.id)}>
+            {c.label}
+          </span>
+        ))}
+      </div>
+      {open && (
+        <div style={{ marginTop: 5, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '3px 6px' }}>
+          {CONDITIONS.map(c => (
+            <label key={c.id} title={c.desc}
+              style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: editable ? 'pointer' : 'default',
+                fontSize: '0.67rem', color: conditions.includes(c.id) ? c.color : '#888',
+                userSelect: 'none', fontFamily: "'Source Serif 4',Georgia,serif" }}>
+              <input type='checkbox' checked={conditions.includes(c.id)}
+                onChange={() => toggle(c.id)} disabled={!editable}
+                style={{ accentColor: c.color, width: 11, height: 11 }}/>
+              {c.label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Monster row ──────────────────────────────────────────────────────────────
 function MonsterRow({ monster, admin, onUpdate, onRemove }) {
   const upd = p => onUpdate({ ...monster, ...p })
   const isMinion = monster.tier === 'minion'
   const isLeader = monster.tier === 'leader'
   const totalHp = isMinion ? (monster.count || 1) * (monster.hpPer || 1) : monster.maxHp
+  const conditions = monster.conditions || []
 
   return (
     <div style={{ padding: '7px 8px', borderRadius: 4, background: 'rgba(0,0,0,0.06)',
-      marginBottom: 5, opacity: monster.dead ? 0.4 : 1 }}>
+      marginBottom: 5, opacity: monster.dead ? 0.4 : 1,
+      boxShadow: conditionBoxShadow(conditions),
+      transition: 'box-shadow 0.2s' }}>
 
       {/* Name + tier + dead toggle */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
@@ -193,6 +300,11 @@ function MonsterRow({ monster, admin, onUpdate, onRemove }) {
           Villain actions: {[1,2,3].filter(n=>monster[`villain${n}`]).join(', ')}
         </div>
       )}
+
+      <ConditionPicker conditions={conditions}
+        onChange={v => upd({ conditions: v })}
+        editable={admin}
+        accentColor={MONSTER_COLOR}/>
     </div>
   )
 }
@@ -290,13 +402,15 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
   const canEndTurn = phase === 'players' && !player.turnTaken && !player.dead && canEdit
   const upd = p => onUpdate({ ...player, ...p })
 
+  const conditions = player.conditions || []
+
   return (
     <div style={{ borderRadius:6, border:`2px solid ${player.turnTaken ? '#ccc' : '#ccc9c0'}`,
       background: player.turnTaken ? '#e8e8e8' : '#faf9f6',
       padding:'10px 12px', marginBottom:8,
-      boxShadow:'0 1px 4px rgba(0,0,0,0.06)',
+      boxShadow: conditionBoxShadow(conditions, '0 1px 4px rgba(0,0,0,0.06)'),
       opacity: player.dead ? 0.4 : player.turnTaken ? 0.55 : 1,
-      transition: 'opacity 0.2s, background 0.2s' }}>
+      transition: 'opacity 0.2s, background 0.2s, box-shadow 0.2s' }}>
 
       <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
         <span style={{ fontFamily:"'IM Fell English',serif", fontSize:'0.95rem',
@@ -347,6 +461,11 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
               fontSize:'0.75rem', fontFamily:"'Source Serif 4',Georgia,serif" }}/>
         </label>
       </div>
+
+      <ConditionPicker conditions={conditions}
+        onChange={v => upd({ conditions: v })}
+        editable={canEdit}
+        accentColor={PLAYER_COLOR}/>
 
       {canEndTurn && (
         <button onClick={onEndTurn}
@@ -581,33 +700,37 @@ export default function InitiativeTracker({ user, onClose }) {
   const allPlayersDone = players.filter(p=>!p.dead).every(p=>p.turnTaken)
   const allMonstersDone = monsterGroups.every(g=>g.turnTaken)
 
-  const playerEndTurn = (playerId) => {
-    const newPlayers = players.map(p =>
-      p.id === playerId ? { ...p, turnTaken:true, main:false, maneuver:false, move:false } : p
-    )
-    const allDone = newPlayers.filter(p=>!p.dead).every(p=>p.turnTaken)
-    if (allDone && monsterGroups.every(g=>g.turnTaken)) {
-      const newRoundPlayers = newPlayers.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, heroicResource:false }))
-      const resetGroups = monsterGroups.map(g => ({ ...g, turnTaken:false, monsters:g.monsters.map(m=>({...m,triggered:false})) }))
-      const maliceTick1 = malice + (round + 1) + newRoundPlayers.filter(p=>!p.dead).length
-      update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups, malice:maliceTick1 })
-    } else {
-      update({ ...state, phase:'monsters', players:newPlayers })
-    }
+  const playerEndTurn = async (playerId) => {
+    // Optimistic local update for snappy UI
+    setState(s => applyPlayerEndTurn(s, playerId))
+    // Transactional Firestore write — reads the latest server state before writing,
+    // preventing stale closure data from overwriting concurrent changes by other players
+    const ref = doc(db, 'initiative/tab-' + activeTabId)
+    writing.current = Date.now()
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref)
+        const s = snap.exists() ? snap.data() : { ...BLANK_STATE }
+        tx.set(ref, { ...applyPlayerEndTurn(s, playerId), updatedAt: serverTimestamp() })
+      })
+    } catch (e) { console.error('playerEndTurn transaction failed:', e) }
+    finally { setTimeout(() => { writing.current = 0 }, 500) }
   }
 
-  const monsterGroupEndTurn = (groupId) => {
-    const newGroups = monsterGroups.map(g => g.id===groupId ? { ...g, turnTaken:true } : g)
-    const allPDone = players.filter(p=>!p.dead).every(p=>p.turnTaken)
-    const allMDone = newGroups.every(g=>g.turnTaken)
-    if (allPDone && allMDone) {
-      const newRoundPlayers = players.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, heroicResource:false }))
-      const resetGroups = newGroups.map(g => ({ ...g, turnTaken:false, monsters:g.monsters.map(m=>({...m,triggered:false})) }))
-      const maliceTick2 = malice + (round + 1) + newRoundPlayers.filter(p=>!p.dead).length
-      update({ ...state, round:round+1, phase:'players', players:newRoundPlayers, monsterGroups:resetGroups, malice:maliceTick2 })
-    } else {
-      update({ ...state, phase:'players', monsterGroups:newGroups })
-    }
+  const monsterGroupEndTurn = async (groupId) => {
+    // Optimistic local update for snappy UI
+    setState(s => applyMonsterGroupEndTurn(s, groupId))
+    // Transactional Firestore write — reads the latest server state before writing
+    const ref = doc(db, 'initiative/tab-' + activeTabId)
+    writing.current = Date.now()
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(ref)
+        const s = snap.exists() ? snap.data() : { ...BLANK_STATE }
+        tx.set(ref, { ...applyMonsterGroupEndTurn(s, groupId), updatedAt: serverTimestamp() })
+      })
+    } catch (e) { console.error('monsterGroupEndTurn transaction failed:', e) }
+    finally { setTimeout(() => { writing.current = 0 }, 500) }
   }
 
   const updatePlayer = upd => update({ ...state, players:players.map(p=>p.id===upd.id?upd:p) })
