@@ -76,10 +76,14 @@ const conditionBoxShadow = (conditions = [], baseShadow = '0 1px 4px rgba(0,0,0,
 const conditionCardStyle = (conditions = []) => {
   const has = id => conditions.includes(id)
   const animations = []
+  const style = {}
   if (has('dazed')) animations.push('dazedSway 3s ease-in-out infinite')
   // frightenShake skipped when dazed is active (transform conflict); glow overlay covers it
   if (has('frightened') && !has('dazed')) animations.push('frightenShake 0.5s ease-in-out infinite')
-  return animations.length ? { animation: animations.join(', ') } : {}
+  // Prone: tilt the card like it's been knocked down
+  if (has('prone') && !has('dazed')) style.transform = 'rotate(-2deg) translateY(2px)'
+  if (animations.length) style.animation = animations.join(', ')
+  return style
 }
 
 // Injects @keyframes for all condition animations once
@@ -242,75 +246,73 @@ function ConditionOverlay({ conditions = [] }) {
   if (!conditions.length) return null
   const has = id => conditions.includes(id)
   return (
-    <div style={{ position:'absolute', inset:0, borderRadius:'inherit',
-      pointerEvents:'none', overflow:'hidden' }}>
+    // Outer wrapper — no overflow:hidden so outward glows aren't clipped
+    <div style={{ position:'absolute', inset:0, borderRadius:'inherit', pointerEvents:'none' }}>
 
-      {/* Bleeding — 3 staggered red teardrops falling */}
-      {has('bleeding') && [0,1,2].map(i => (
-        <div key={i} style={{
-          position:'absolute', top:0, left:`${20 + i*30}%`,
-          width:5, height:8, opacity:0,
-          borderRadius:'50% 50% 50% 50% / 30% 30% 70% 70%',
-          background:'#c0392b',
-          animation:`bleedDrip 2.5s ease-in ${i*0.85}s infinite`
-        }}/>
-      ))}
+      {/* Inner clipped wrapper — for effects that must stay within card bounds */}
+      <div style={{ position:'absolute', inset:0, borderRadius:'inherit', overflow:'hidden' }}>
+
+        {/* Bleeding — 3 staggered red teardrops falling */}
+        {has('bleeding') && [0,1,2].map(i => (
+          <div key={i} style={{
+            position:'absolute', top:0, left:`${20 + i*30}%`,
+            width:5, height:8, opacity:0,
+            borderRadius:'50% 50% 50% 50% / 30% 30% 70% 70%',
+            background:'#c0392b',
+            animation:`bleedDrip 2.5s ease-in ${i*0.85}s infinite`
+          }}/>
+        ))}
+
+        {/* Grabbed — inward constricting brown squeeze */}
+        {has('grabbed') && (
+          <div style={{
+            position:'absolute', inset:0, borderRadius:'inherit',
+            animation:'grabbedConstrict 1.5s ease-in-out infinite'
+          }}/>
+        )}
+
+        {/* Restrained — horizontal bar pattern */}
+        {has('restrained') && (
+          <div style={{
+            position:'absolute', inset:0, borderRadius:'inherit',
+            background:'repeating-linear-gradient(transparent, transparent 9px, rgba(106,27,154,0.08) 9px, rgba(106,27,154,0.08) 11px)'
+          }}/>
+        )}
+
+        {/* Slowed — frost gradient breathes from bottom */}
+        {has('slowed') && (
+          <div style={{
+            position:'absolute', bottom:0, left:0, right:0, height:'65%',
+            borderRadius:'inherit',
+            background:'linear-gradient(to top, rgba(25,118,210,0.2), transparent)',
+            animation:'frostPulse 4s ease-in-out infinite'
+          }}/>
+        )}
+
+        {/* Weakened — slow gray-blue overlay dim */}
+        {has('weakened') && (
+          <div style={{
+            position:'absolute', inset:0, borderRadius:'inherit',
+            animation:'weakenOverlay 3.5s ease-in-out infinite'
+          }}/>
+        )}
+      </div>
+
+      {/* Outward glow effects — outside the clipped wrapper so box-shadows aren't cut off */}
 
       {/* Frightened — pulsing amber outward glow */}
       {has('frightened') && (
         <div style={{
-          position:'absolute', inset:-3, borderRadius:'inherit',
+          position:'absolute', inset:-4, borderRadius:'inherit',
           animation:'frightenGlow 1.8s ease-in-out infinite'
-        }}/>
-      )}
-
-      {/* Grabbed — inward constricting brown squeeze */}
-      {has('grabbed') && (
-        <div style={{
-          position:'absolute', inset:0, borderRadius:'inherit',
-          animation:'grabbedConstrict 1.5s ease-in-out infinite'
-        }}/>
-      )}
-
-      {/* Prone — diagonal weight at bottom corner */}
-      {has('prone') && (
-        <div style={{
-          position:'absolute', inset:0, borderRadius:'inherit',
-          background:'linear-gradient(135deg, transparent 55%, rgba(96,125,139,0.18))'
-        }}/>
-      )}
-
-      {/* Restrained — horizontal bar pattern */}
-      {has('restrained') && (
-        <div style={{
-          position:'absolute', inset:0, borderRadius:'inherit',
-          background:'repeating-linear-gradient(transparent, transparent 9px, rgba(106,27,154,0.08) 9px, rgba(106,27,154,0.08) 11px)'
-        }}/>
-      )}
-
-      {/* Slowed — frost gradient breathes from bottom */}
-      {has('slowed') && (
-        <div style={{
-          position:'absolute', bottom:0, left:0, right:0, height:'65%',
-          borderRadius:'inherit',
-          background:'linear-gradient(to top, rgba(25,118,210,0.2), transparent)',
-          animation:'frostPulse 4s ease-in-out infinite'
         }}/>
       )}
 
       {/* Taunted — pulsing orange outward glow */}
       {has('taunted') && (
         <div style={{
-          position:'absolute', inset:-3, borderRadius:'inherit',
+          position:'absolute', inset:-4, borderRadius:'inherit',
           animation:'tauntedGlow 1s ease-in-out infinite'
-        }}/>
-      )}
-
-      {/* Weakened — slow gray-blue overlay dim */}
-      {has('weakened') && (
-        <div style={{
-          position:'absolute', inset:0, borderRadius:'inherit',
-          animation:'weakenOverlay 3.5s ease-in-out infinite'
         }}/>
       )}
     </div>
