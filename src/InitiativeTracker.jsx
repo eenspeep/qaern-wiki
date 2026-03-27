@@ -72,6 +72,63 @@ const conditionBoxShadow = (conditions = [], baseShadow = '0 1px 4px rgba(0,0,0,
   return `${stripes}, ${baseShadow}`
 }
 
+// Returns extra inline styles for the card container based on active conditions
+const conditionCardStyle = (conditions = []) => {
+  const has = id => conditions.includes(id)
+  const animations = []
+  if (has('dazed')) animations.push('dazedSway 3s ease-in-out infinite')
+  // frightenShake skipped when dazed is active (transform conflict); glow overlay covers it
+  if (has('frightened') && !has('dazed')) animations.push('frightenShake 0.5s ease-in-out infinite')
+  return animations.length ? { animation: animations.join(', ') } : {}
+}
+
+// Injects @keyframes for all condition animations once
+function ConditionStyles() {
+  return (
+    <style>{`
+      @keyframes bleedDrip {
+        0%   { transform: translateY(-8px); opacity: 0.9; }
+        80%  { opacity: 0.55; }
+        100% { transform: translateY(130px); opacity: 0; }
+      }
+      @keyframes dazedSway {
+        0%,100% { transform: translateX(0) rotate(0deg);    filter: blur(0px); }
+        30%     { transform: translateX(5px) rotate(1deg);  filter: blur(1px); }
+        70%     { transform: translateX(-5px) rotate(-1deg); filter: blur(1.2px); }
+      }
+      @keyframes frightenShake {
+        0%,100% { transform: translateX(0); }
+        15%     { transform: translateX(-2px); }
+        30%     { transform: translateX(2px); }
+        45%     { transform: translateX(-2px); }
+        60%     { transform: translateX(2px); }
+        75%     { transform: translateX(-1px); }
+        90%     { transform: translateX(1px); }
+      }
+      @keyframes frightenGlow {
+        0%,100% { box-shadow: 0 0 0px rgba(226,180,0,0); }
+        50%     { box-shadow: 0 0 14px 3px rgba(226,180,0,0.45); }
+      }
+      @keyframes grabbedConstrict {
+        0%,100% { box-shadow: inset 0 0 0 0px rgba(127,85,57,0); }
+        50%     { box-shadow: inset 0 0 0 5px rgba(127,85,57,0.4); }
+      }
+      @keyframes tauntedGlow {
+        0%,100% { box-shadow: 0 0 4px rgba(230,81,0,0.15); }
+        50%     { box-shadow: 0 0 20px 4px rgba(230,81,0,0.6); }
+      }
+      @keyframes frostPulse {
+        0%,100% { opacity: 0.4; transform: scaleY(0.65); transform-origin: bottom; }
+        50%     { opacity: 0.85; transform: scaleY(1);    transform-origin: bottom; }
+      }
+      @keyframes weakenOverlay {
+        0%,100% { background: rgba(84,110,122,0); }
+        50%     { background: rgba(84,110,122,0.22); }
+      }
+    `}</style>
+  )
+}
+
 // Pure turn-logic helpers — used both for optimistic local updates and Firestore transactions
 const applyPlayerEndTurn = (s, playerId) => {
   const { round, players, monsterGroups, malice = 0 } = s
@@ -180,6 +237,86 @@ function ConditionPicker({ conditions = [], onChange, editable, accentColor }) {
   )
 }
 
+// ─── Condition overlay ────────────────────────────────────────────────────────
+function ConditionOverlay({ conditions = [] }) {
+  if (!conditions.length) return null
+  const has = id => conditions.includes(id)
+  return (
+    <div style={{ position:'absolute', inset:0, borderRadius:'inherit',
+      pointerEvents:'none', overflow:'hidden' }}>
+
+      {/* Bleeding — 3 staggered red teardrops falling */}
+      {has('bleeding') && [0,1,2].map(i => (
+        <div key={i} style={{
+          position:'absolute', top:0, left:`${20 + i*30}%`,
+          width:5, height:8, opacity:0,
+          borderRadius:'50% 50% 50% 50% / 30% 30% 70% 70%',
+          background:'#c0392b',
+          animation:`bleedDrip 2.5s ease-in ${i*0.85}s infinite`
+        }}/>
+      ))}
+
+      {/* Frightened — pulsing amber outward glow */}
+      {has('frightened') && (
+        <div style={{
+          position:'absolute', inset:-3, borderRadius:'inherit',
+          animation:'frightenGlow 1.8s ease-in-out infinite'
+        }}/>
+      )}
+
+      {/* Grabbed — inward constricting brown squeeze */}
+      {has('grabbed') && (
+        <div style={{
+          position:'absolute', inset:0, borderRadius:'inherit',
+          animation:'grabbedConstrict 1.5s ease-in-out infinite'
+        }}/>
+      )}
+
+      {/* Prone — diagonal weight at bottom corner */}
+      {has('prone') && (
+        <div style={{
+          position:'absolute', inset:0, borderRadius:'inherit',
+          background:'linear-gradient(135deg, transparent 55%, rgba(96,125,139,0.18))'
+        }}/>
+      )}
+
+      {/* Restrained — horizontal bar pattern */}
+      {has('restrained') && (
+        <div style={{
+          position:'absolute', inset:0, borderRadius:'inherit',
+          background:'repeating-linear-gradient(transparent, transparent 9px, rgba(106,27,154,0.08) 9px, rgba(106,27,154,0.08) 11px)'
+        }}/>
+      )}
+
+      {/* Slowed — frost gradient breathes from bottom */}
+      {has('slowed') && (
+        <div style={{
+          position:'absolute', bottom:0, left:0, right:0, height:'65%',
+          borderRadius:'inherit',
+          background:'linear-gradient(to top, rgba(25,118,210,0.2), transparent)',
+          animation:'frostPulse 4s ease-in-out infinite'
+        }}/>
+      )}
+
+      {/* Taunted — pulsing orange outward glow */}
+      {has('taunted') && (
+        <div style={{
+          position:'absolute', inset:-3, borderRadius:'inherit',
+          animation:'tauntedGlow 1s ease-in-out infinite'
+        }}/>
+      )}
+
+      {/* Weakened — slow gray-blue overlay dim */}
+      {has('weakened') && (
+        <div style={{
+          position:'absolute', inset:0, borderRadius:'inherit',
+          animation:'weakenOverlay 3.5s ease-in-out infinite'
+        }}/>
+      )}
+    </div>
+  )
+}
+
 // ─── Monster row ──────────────────────────────────────────────────────────────
 function MonsterRow({ monster, admin, onUpdate, onRemove }) {
   const upd = p => onUpdate({ ...monster, ...p })
@@ -191,8 +328,11 @@ function MonsterRow({ monster, admin, onUpdate, onRemove }) {
   return (
     <div style={{ padding: '7px 8px', borderRadius: 4, background: 'rgba(0,0,0,0.06)',
       marginBottom: 5, opacity: monster.dead ? 0.4 : 1,
+      position: 'relative',
       boxShadow: conditionBoxShadow(conditions),
-      transition: 'box-shadow 0.2s' }}>
+      transition: 'box-shadow 0.2s',
+      ...conditionCardStyle(conditions) }}>
+      <ConditionOverlay conditions={conditions}/>
 
       {/* Name + tier + dead toggle */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
@@ -408,9 +548,12 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
     <div style={{ borderRadius:6, border:`2px solid ${player.turnTaken ? '#ccc' : '#ccc9c0'}`,
       background: player.turnTaken ? '#e8e8e8' : '#faf9f6',
       padding:'10px 12px', marginBottom:8,
+      position: 'relative',
       boxShadow: conditionBoxShadow(conditions, '0 1px 4px rgba(0,0,0,0.06)'),
       opacity: player.dead ? 0.4 : player.turnTaken ? 0.55 : 1,
-      transition: 'opacity 0.2s, background 0.2s, box-shadow 0.2s' }}>
+      transition: 'opacity 0.2s, background 0.2s, box-shadow 0.2s',
+      ...conditionCardStyle(conditions) }}>
+      <ConditionOverlay conditions={conditions}/>
 
       <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:8 }}>
         <span style={{ fontFamily:"'IM Fell English',serif", fontSize:'0.95rem',
@@ -752,6 +895,7 @@ export default function InitiativeTracker({ user, onClose }) {
     <div style={{ position:'fixed', inset:0, zIndex:300, background:'#1a1a2a',
       display:'flex', flexDirection:'column', fontFamily:"'Source Serif 4',Georgia,serif",
       overflowY: isMobile ? 'auto' : 'hidden' }}>
+      <ConditionStyles/>
 
       {/* Header */}
       <div style={{ background:'#12121e', borderBottom:'1px solid #2a2a4a',
