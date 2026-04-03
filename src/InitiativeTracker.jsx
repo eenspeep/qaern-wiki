@@ -174,16 +174,12 @@ const applyMonsterGroupEndTurn = (s, groupId) => {
   const newGroups = s.monsterGroups.map(g =>
     g.id === groupId ? { ...g, turnsUsed: (g.turnsUsed || 0) + 1 } : g
   )
-  const pHave = playersHaveTurns(s.players)
-  const mHave = monstersHaveTurns(newGroups)
-  if (!pHave && !mHave) {
-    return advanceRound(s, s.players, newGroups)
-  } else if (pHave) {
+  // Always return to players after a monster turn — extra turns are never consecutive.
+  // If all players are already done, advance the round instead.
+  if (playersHaveTurns(s.players)) {
     return { ...s, phase: 'players', monsterGroups: newGroups }
-  } else {
-    // all players done but monsters still have turns — stay on monsters
-    return { ...s, phase: 'monsters', monsterGroups: newGroups }
   }
+  return advanceRound(s, s.players, newGroups)
 }
 
 const PLAYER_COLOR  = '#1b4f72'
