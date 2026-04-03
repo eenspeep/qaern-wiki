@@ -378,6 +378,12 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
       )}
       <div className='article-body' style={{fontSize:'0.91rem'}} onClick={handleBodyClick} dangerouslySetInnerHTML={{__html:linkedContent}}/>
       <div style={{clear:'both'}}/>
+      {(article.subgroups||[]).map(sg=>(
+        <div key={sg.id} style={{marginTop:'1.5rem',paddingTop:'1rem',borderTop:'1px solid #e8e5e0'}}>
+          <h2 style={{fontFamily:"'IM Fell English',serif",fontSize:'1.25rem',color:'#1a1a1a',marginBottom:'0.5rem'}}>{sg.title}</h2>
+          <div className='article-body' style={{fontSize:'0.91rem'}} onClick={handleBodyClick} dangerouslySetInnerHTML={{__html:linkifyContent(sg.content||'',articles||{},article.id,onNavigate)}}/>
+        </div>
+      ))}
       {article.updatedAt&&(
         <div style={{marginTop:'1.5rem',paddingTop:'0.75rem',borderTop:'1px solid #e8e5e0',fontSize:'0.76rem',color:'#aaa'}}>
           Last edited {new Date(article.updatedAt.seconds*1000).toLocaleString()} {article.updatedBy&&`by ${article.updatedBy}`}
@@ -480,6 +486,7 @@ function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categori
             <InfoboxEditor infobox={draft.infobox||{}} onChange={ib=>setDraft(p=>({...p,infobox:ib}))}/>
             <label style={{...lb,marginTop:14}}>Article Body</label>
             <RichEditor value={draft.content||''} onChange={html=>setDraft(p=>({...p,content:html}))}/>
+            <SubgroupsEditor subgroups={draft.subgroups||[]} onChange={sgs=>setDraft(p=>({...p,subgroups:sgs}))}/>
           </>
       }
       <div style={{marginTop:14,display:'flex',alignItems:'center'}}>
@@ -491,7 +498,62 @@ function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categori
   )
 }
 
-// ─── Presence Bubbles ─────────────────────────────────────────────────────────
+// ─── Subgroups Editor ─────────────────────────────────────────────────────────
+function SubgroupsEditor({ subgroups = [], onChange }) {
+  const [editingId, setEditingId] = useState(null)
+  const lb = {display:'block',fontSize:'0.69rem',color:'#666',marginBottom:3,textTransform:'uppercase',letterSpacing:'0.07em',marginTop:10}
+  const inp = {width:'100%',background:'#f8f7f4',color:'#222',border:'1px solid #ccc9c0',borderRadius:3,padding:'6px 10px',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.9rem',marginBottom:8,boxSizing:'border-box'}
+
+  const add = () => {
+    const sg = { id: Date.now().toString(36), title: '', content: '' }
+    onChange([...subgroups, sg])
+    setEditingId(sg.id)
+  }
+  const upd = (id, patch) => onChange(subgroups.map(sg => sg.id === id ? { ...sg, ...patch } : sg))
+  const del = (id) => { onChange(subgroups.filter(sg => sg.id !== id)); if (editingId === id) setEditingId(null) }
+  const mv = (i, d) => { const j = i + d; if (j < 0 || j >= subgroups.length) return; const u = [...subgroups]; [u[i],u[j]]=[u[j],u[i]]; onChange(u) }
+
+  return (
+    <div style={{marginTop:14}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+        <label style={{...lb,marginTop:0,flex:1}}>Sub-groups</label>
+        <button onClick={add}
+          style={{padding:'3px 10px',border:'1px solid #ccc9c0',borderRadius:3,background:'#eeecea',cursor:'pointer',fontSize:'0.76rem',fontFamily:"'Source Serif 4',Georgia,serif",color:'#444'}}>
+          + Add
+        </button>
+      </div>
+      {subgroups.map((sg, i) => (
+        <div key={sg.id} style={{border:'1px solid #ccc9c0',borderRadius:4,marginBottom:8,background:'#f8f7f4'}}>
+          <div style={{display:'flex',alignItems:'center',gap:4,padding:'6px 8px',borderBottom: editingId===sg.id ? '1px solid #ccc9c0' : 'none',background:'#eeecea',borderRadius: editingId===sg.id ? '4px 4px 0 0' : 4}}>
+            <span style={{flex:1,fontSize:'0.85rem',fontFamily:"'IM Fell English',serif",color:'#1b4f72',fontStyle: sg.title ? 'normal' : 'italic',opacity: sg.title ? 1 : 0.5}}>
+              {sg.title || 'Untitled sub-group'}
+            </span>
+            <button onClick={()=>mv(i,-1)} disabled={i===0} title='Move up'
+              style={{background:'none',border:'none',cursor:i===0?'default':'pointer',color:i===0?'#ccc':'#888',fontSize:'0.75rem',padding:'0 3px',lineHeight:1}}>↑</button>
+            <button onClick={()=>mv(i,1)} disabled={i===subgroups.length-1} title='Move down'
+              style={{background:'none',border:'none',cursor:i===subgroups.length-1?'default':'pointer',color:i===subgroups.length-1?'#ccc':'#888',fontSize:'0.75rem',padding:'0 3px',lineHeight:1}}>↓</button>
+            <button onClick={()=>setEditingId(editingId===sg.id ? null : sg.id)}
+              style={{background:'none',border:'1px solid #ccc9c0',borderRadius:3,cursor:'pointer',fontSize:'0.72rem',color:'#555',padding:'1px 7px',fontFamily:"'Source Serif 4',Georgia,serif"}}>
+              {editingId===sg.id ? 'Done' : 'Edit'}
+            </button>
+            <button onClick={()=>del(sg.id)} title='Delete sub-group'
+              style={{background:'none',border:'none',cursor:'pointer',fontSize:'0.78rem',color:'#b44',padding:'0 2px',lineHeight:1}}>✕</button>
+          </div>
+          {editingId===sg.id && (
+            <div style={{padding:'8px 10px'}}>
+              <label style={lb}>Sub-group Title</label>
+              <input style={inp} value={sg.title} onChange={e=>upd(sg.id,{title:e.target.value})} placeholder='e.g. Notable Members'/>
+              <label style={lb}>Content</label>
+              <RichEditor value={sg.content} onChange={html=>upd(sg.id,{content:html})}/>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+
 function PresenceBubbles({ online, currentUser }) {
   const others = Object.entries(online).filter(([uid])=>uid!==currentUser?.uid)
   if (others.length===0) return null
