@@ -741,11 +741,16 @@ export default function WikiApp() {
 
   const effectiveColor = userColor || uidColor(user?.uid || '')
 
-  // Read initial URL hash — #bulletin opens bulletin, otherwise treat as article id
+  // Read initial URL hash — open the matching tool or treat as article id
   useEffect(() => {
     const hash = window.location.hash.slice(1)
-    if (hash === 'bulletin') setShowBulletin(true)
-    else if (hash) setCurrentId(hash)
+    if      (hash === 'bulletin')   setShowBulletin(true)
+    else if (hash === 'initiative') setShowInitiative(true)
+    else if (hash === 'tracker')    setShowTracker(true)
+    else if (hash === 'map')        setShowHexMap(true)
+    else if (hash === 'downtime')   setShowDowntime(true)
+    else if (hash === 'forum')      setShowChat(true)
+    else if (hash)                  setCurrentId(hash)
   }, [])
 
   // Keep URL hash in sync with current article; clear it on landing page
@@ -999,7 +1004,7 @@ export default function WikiApp() {
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📋 Changelog</button>
         )}
         {!isMobile && (
-          <button onClick={()=>setShowTracker(true)}
+          <button onClick={()=>{ setShowTracker(true); history.replaceState(null,'','#tracker') }}
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📊 Tracker</button>
         )}
         {!isMobile && (
@@ -1007,19 +1012,19 @@ export default function WikiApp() {
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📋 Bulletin</button>
         )}
         {!isMobile && (
-          <button onClick={()=>setShowInitiative(true)}
+          <button onClick={()=>{ setShowInitiative(true); history.replaceState(null,'','#initiative') }}
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>⚔ Initiative</button>
         )}
         {!isMobile && (
-          <button onClick={()=>setShowHexMap(true)}
+          <button onClick={()=>{ setShowHexMap(true); history.replaceState(null,'','#map') }}
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>🗺 Map</button>
         )}
         {!isMobile && (
-          <button onClick={()=>setShowDowntime(true)}
+          <button onClick={()=>{ setShowDowntime(true); history.replaceState(null,'','#downtime') }}
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>🌙 Downtime</button>
         )}
         {!isMobile && (
-          <button onClick={()=>setShowChat(true)}
+          <button onClick={()=>{ setShowChat(true); history.replaceState(null,'','#forum') }}
             style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>💬 Forum</button>
         )}
         {!isMobile && (
@@ -1304,22 +1309,22 @@ export default function WikiApp() {
       {isMobile && (
         <MobileToolbar
           onArticles={()=>setSidebarOpen(s=>!s)}
-          onBulletin={()=>{ setShowBulletin(true); history.replaceState(null,'','#bulletin') }}
-          onInitiative={()=>setShowInitiative(true)}
-          onTracker={()=>setShowTracker(true)}
-          onMap={()=>setShowHexMap(true)}
-          onDowntime={()=>setShowDowntime(true)}
-          onForum={()=>setShowChat(true)}
+          onBulletin={()=>{ setShowBulletin(true);   history.replaceState(null,'','#bulletin') }}
+          onInitiative={()=>{ setShowInitiative(true); history.replaceState(null,'','#initiative') }}
+          onTracker={()=>{ setShowTracker(true);    history.replaceState(null,'','#tracker') }}
+          onMap={()=>{ setShowHexMap(true);         history.replaceState(null,'','#map') }}
+          onDowntime={()=>{ setShowDowntime(true);  history.replaceState(null,'','#downtime') }}
+          onForum={()=>{ setShowChat(true);         history.replaceState(null,'','#forum') }}
           onChangelog={()=>setShowChangelog(s=>!s)}
         />
       )}
 
-      {showTracker && <Tracker user={user} onClose={()=>setShowTracker(false)}/> }
-      {showBulletin && <BulletinBoard user={user} onClose={()=>{ setShowBulletin(false); history.replaceState(null,'',window.location.pathname) }}/>}
-      {showInitiative && <InitiativeTracker user={user} onClose={()=>setShowInitiative(false)}/>}
-      {showHexMap && <HexMap user={user} onClose={()=>setShowHexMap(false)}/>}
-      {showDowntime && <Downtime user={user} onClose={()=>setShowDowntime(false)}/>}
-      {showChat && <Chat user={user} onClose={()=>setShowChat(false)}/>}
+      {showTracker    && <Tracker         user={user} onClose={()=>{ setShowTracker(false);    history.replaceState(null,'',window.location.pathname) }}/>}
+      {showBulletin   && <BulletinBoard   user={user} onClose={()=>{ setShowBulletin(false);   history.replaceState(null,'',window.location.pathname) }}/>}
+      {showInitiative && <InitiativeTracker user={user} onClose={()=>{ setShowInitiative(false); history.replaceState(null,'',window.location.pathname) }}/>}
+      {showHexMap     && <HexMap          user={user} onClose={()=>{ setShowHexMap(false);     history.replaceState(null,'',window.location.pathname) }}/>}
+      {showDowntime   && <Downtime        user={user} onClose={()=>{ setShowDowntime(false);   history.replaceState(null,'',window.location.pathname) }}/>}
+      {showChat       && <Chat            user={user} onClose={()=>{ setShowChat(false);       history.replaceState(null,'',window.location.pathname) }}/>}
 
       {showSettings && <UserSettings user={user} updateUser={updateUser} currentColor={effectiveColor} onClose={()=>setShowSettings(false)}/>}
 
