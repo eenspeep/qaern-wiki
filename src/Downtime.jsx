@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
-import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore'
+import { collection, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore'
 import { db } from './firebase'
 
 const ADMIN = 'speep'
 const isAdmin = u => u?.displayName === ADMIN
 
 const BONUS_OPTIONS = [0,1,2,3,4,5,6]
+const CHARACTERISTICS = ['Might','Agility','Reason','Intuition','Presence']
+const CHAR_BONUS_OPTIONS = [0,1,2,3,4,5,6]
 
 const d10 = () => Math.floor(Math.random() * 10) + 1
 
@@ -52,6 +54,8 @@ function RollForm({ user, onClose }) {
   const [sessionDate, setSessionDate] = useState('')
   const [goal, setGoal] = useState('')
   const [project, setProject] = useState('')
+  const [characteristic, setCharacteristic] = useState('')
+  const [characteristicBonus, setCharacteristicBonus] = useState(0)
   const [skilledBonus, setSkilledBonus] = useState(false)
   const [additionalBonus, setAdditionalBonus] = useState(0)
   const [dice, setDice] = useState([null, null])
@@ -61,7 +65,8 @@ function RollForm({ user, onClose }) {
 
   const skillBonus = skilledBonus ? 2 : 0
   const addBonus = parseInt(additionalBonus) || 0
-  const total = rolled ? (dice[0] + dice[1] + skillBonus + addBonus) : null
+  const charBonus = parseInt(characteristicBonus) || 0
+  const total = rolled ? (dice[0] + dice[1] + skillBonus + addBonus + charBonus) : null
 
   const roll = () => {
     if (rolling || rolled) return
@@ -84,6 +89,8 @@ function RollForm({ user, onClose }) {
         sessionDate,
         goal: goal.trim(),
         project: project.trim(),
+        characteristic,
+        characteristicBonus: charBonus,
         dice,
         skilledBonus,
         additionalBonus: parseInt(additionalBonus)||0,
@@ -134,6 +141,25 @@ function RollForm({ user, onClose }) {
         {/* Modifiers */}
         <div style={{ background:'#f0eeea', borderRadius:6, padding:'10px 12px', marginBottom:14 }}>
           <div style={{ fontSize:'0.72rem', textTransform:'uppercase', letterSpacing:'0.08em', color:'#888', marginBottom:8 }}>Roll Modifiers</div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 12px', marginBottom:8 }}>
+            <div>
+              <label style={lb}>Characteristic</label>
+              <select value={characteristic} onChange={e=>setCharacteristic(e.target.value)}
+                style={{ ...inp({marginBottom:0}), cursor:'pointer' }}>
+                <option value=''>— None —</option>
+                {CHARACTERISTICS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lb}>Characteristic Bonus</label>
+              <select value={characteristicBonus} onChange={e=>setCharacteristicBonus(parseInt(e.target.value))}
+                style={{ ...inp({marginBottom:0}), cursor:'pointer' }}>
+                {CHAR_BONUS_OPTIONS.map(v => <option key={v} value={v}>{v === 0 ? 'None' : `+${v}`}</option>)}
+              </select>
+            </div>
+          </div>
+
           <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', userSelect:'none',
             fontSize:'0.84rem', color:'#333', marginBottom:8 }}>
             <input type='checkbox' checked={skilledBonus} onChange={e=>setSkilledBonus(e.target.checked)}
@@ -153,11 +179,11 @@ function RollForm({ user, onClose }) {
             <DieFace value={dice[0]} rolling={rolling}/>
             <span style={{ fontSize:'1.5rem', color:'#ccc' }}>+</span>
             <DieFace value={dice[1]} rolling={rolling}/>
-            {(skilledBonus || addBonus > 0) && rolled && (
+            {(skilledBonus || addBonus > 0 || charBonus > 0) && rolled && (
               <>
                 <span style={{ fontSize:'1.2rem', color:'#ccc' }}>+</span>
                 <div style={{ fontSize:'1.1rem', fontWeight:700, color:'#1b4f72' }}>
-                  {skillBonus + addBonus}
+                  {charBonus + skillBonus + addBonus}
                 </div>
               </>
             )}
@@ -185,7 +211,9 @@ function RollForm({ user, onClose }) {
           )}
           {rolled && (
             <div style={{ fontSize:'0.75rem', color:'#aaa', fontStyle:'italic' }}>
-              {dice[0]} + {dice[1]}{skilledBonus?` + 2 (skill)`:''}
+              {dice[0]} + {dice[1]}
+              {charBonus>0?` + ${charBonus} (${characteristic||'char'})`:''}
+              {skilledBonus?` + 2 (skill)`:''}
               {addBonus>0?` + ${addBonus} (bonus)`:''}
               {' '}= {total}
             </div>
@@ -213,15 +241,166 @@ function RollForm({ user, onClose }) {
   )
 }
 
+// ─── Edit roll modal (admin only) ─────────────────────────────────────────────
+function EditRollModal({ roll, onClose }) {
+  const [playerName, setPlayerName] = useState(roll.playerName || '')
+  const [sessionDate, setSessionDate] = useState(roll.sessionDate || '')
+  const [goal, setGoal] = useState(roll.goal || '')
+  const [project, setProject] = useState(roll.project || '')
+  const [characteristic, setCharacteristic] = useState(roll.characteristic || '')
+  const [characteristicBonus, setCharacteristicBonus] = useState(roll.characteristicBonus || 0)
+  const [skilledBonus, setSkilledBonus] = useState(roll.skilledBonus || false)
+  const [additionalBonus, setAdditionalBonus] = useState(roll.additionalBonus || 0)
+  const [die1, setDie1] = useState(roll.dice?.[0] ?? 1)
+  const [die2, setDie2] = useState(roll.dice?.[1] ?? 1)
+  const [saving, setSaving] = useState(false)
+
+  const charBonus = parseInt(characteristicBonus) || 0
+  const skillBonus = skilledBonus ? 2 : 0
+  const addBonus = parseInt(additionalBonus) || 0
+  const d1 = Math.max(1, Math.min(10, parseInt(die1) || 1))
+  const d2 = Math.max(1, Math.min(10, parseInt(die2) || 1))
+  const total = d1 + d2 + charBonus + skillBonus + addBonus
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      await updateDoc(doc(db, 'downtime', roll.id), {
+        playerName: playerName.trim(),
+        sessionDate,
+        goal: goal.trim(),
+        project: project.trim(),
+        characteristic,
+        characteristicBonus: charBonus,
+        dice: [d1, d2],
+        skilledBonus,
+        additionalBonus: addBonus,
+        additionalBonusLabel: addBonus > 0 ? `+${addBonus}` : '',
+        total,
+      })
+      onClose()
+    } catch(e) { console.error(e); setSaving(false) }
+  }
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:500,
+      display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}
+      onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{ background:'#fdf8f0', borderRadius:8,
+        padding:'1.5rem', width:'100%', maxWidth:440,
+        boxShadow:'0 8px 40px rgba(0,0,0,0.3)',
+        fontFamily:"'Source Serif 4',Georgia,serif",
+        maxHeight:'90vh', overflowY:'auto' }}>
+
+        <div style={{ fontFamily:"'IM Fell English',serif", fontSize:'1.1rem', color:'#1b4f72', marginBottom:'1.2rem' }}>
+          Edit Roll
+        </div>
+
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 12px' }}>
+          <div>
+            <label style={lb}>Player Name</label>
+            <input style={inp({marginBottom:10})} value={playerName} onChange={e=>setPlayerName(e.target.value)}/>
+          </div>
+          <div>
+            <label style={lb}>Session Date</label>
+            <input type='date' style={inp({marginBottom:10})} value={sessionDate} onChange={e=>setSessionDate(e.target.value)}/>
+          </div>
+        </div>
+
+        <label style={lb}>Project / Activity</label>
+        <input style={inp({marginBottom:10})} value={project} onChange={e=>setProject(e.target.value)}/>
+
+        <label style={lb}>Goal</label>
+        <input style={inp({marginBottom:14})} value={goal} onChange={e=>setGoal(e.target.value)}/>
+
+        <div style={{ background:'#f0eeea', borderRadius:6, padding:'10px 12px', marginBottom:14 }}>
+          <div style={{ fontSize:'0.72rem', textTransform:'uppercase', letterSpacing:'0.08em', color:'#888', marginBottom:8 }}>Modifiers</div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 12px', marginBottom:8 }}>
+            <div>
+              <label style={lb}>Characteristic</label>
+              <select value={characteristic} onChange={e=>setCharacteristic(e.target.value)}
+                style={{ ...inp({marginBottom:0}), cursor:'pointer' }}>
+                <option value=''>— None —</option>
+                {CHARACTERISTICS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lb}>Characteristic Bonus</label>
+              <select value={characteristicBonus} onChange={e=>setCharacteristicBonus(parseInt(e.target.value))}
+                style={{ ...inp({marginBottom:0}), cursor:'pointer' }}>
+                {CHAR_BONUS_OPTIONS.map(v => <option key={v} value={v}>{v === 0 ? 'None' : `+${v}`}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <label style={{ display:'flex', alignItems:'center', gap:8, cursor:'pointer', userSelect:'none',
+            fontSize:'0.84rem', color:'#333', marginBottom:8 }}>
+            <input type='checkbox' checked={skilledBonus} onChange={e=>setSkilledBonus(e.target.checked)}
+              style={{ accentColor:'#1b4f72', width:14, height:14 }}/>
+            Applicable skill? <span style={{ color:'#1b4f72', fontWeight:600 }}>+2</span>
+          </label>
+          <label style={lb}>Additional Bonus</label>
+          <select value={additionalBonus} onChange={e=>setAdditionalBonus(parseInt(e.target.value))}
+            style={{ ...inp({marginBottom:0}), cursor:'pointer' }}>
+            {BONUS_OPTIONS.map(v => <option key={v} value={v}>{v === 0 ? 'None' : `+${v}`}</option>)}
+          </select>
+        </div>
+
+        {/* Dice overrides */}
+        <div style={{ background:'#f0eeea', borderRadius:6, padding:'10px 12px', marginBottom:14 }}>
+          <div style={{ fontSize:'0.72rem', textTransform:'uppercase', letterSpacing:'0.08em', color:'#888', marginBottom:8 }}>Dice Values</div>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div>
+              <label style={lb}>Die 1 (1–10)</label>
+              <input type='number' min={1} max={10} value={die1} onChange={e=>setDie1(e.target.value)}
+                style={{ ...inp({marginBottom:0}), width:70, textAlign:'center' }}/>
+            </div>
+            <div>
+              <label style={lb}>Die 2 (1–10)</label>
+              <input type='number' min={1} max={10} value={die2} onChange={e=>setDie2(e.target.value)}
+                style={{ ...inp({marginBottom:0}), width:70, textAlign:'center' }}/>
+            </div>
+            <div style={{ marginTop:16 }}>
+              <span style={{ fontSize:'0.78rem', color:'#888' }}>Total: </span>
+              <span style={{ fontWeight:700, color:'#1b4f72', fontSize:'1.1rem' }}>{total}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <button onClick={onClose}
+            style={{ padding:'6px 14px', border:'1px solid #ccc9c0', borderRadius:3,
+              background:'#f0eeea', cursor:'pointer', fontSize:'0.8rem',
+              fontFamily:"'Source Serif 4',Georgia,serif" }}>
+            Cancel
+          </button>
+          <button onClick={save} disabled={saving || !playerName.trim() || !sessionDate}
+            style={{ padding:'6px 16px', border:'none', borderRadius:3,
+              background: (!playerName.trim()||!sessionDate) ? '#aaa' : '#1b4f72',
+              color:'#fff', cursor: (!playerName.trim()||!sessionDate) ? 'default' : 'pointer',
+              fontSize:'0.8rem', fontFamily:"'Source Serif 4',Georgia,serif" }}>
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Single roll card ─────────────────────────────────────────────────────────
 function RollCard({ roll, admin, onDelete }) {
+  const [editing, setEditing] = useState(false)
+
   const breakdown = [
     roll.dice[0], '+', roll.dice[1],
+    roll.characteristicBonus > 0 ? `+ ${roll.characteristicBonus} (${roll.characteristic||'char'})` : null,
     roll.skilledBonus ? '+ 2 (skill)' : null,
     roll.additionalBonus > 0 ? `+ ${roll.additionalBonus} (${roll.additionalBonusLabel||'bonus'})` : null,
   ].filter(Boolean).join(' ')
 
   return (
+    <>
     <div style={{ background:'#faf9f6', border:'1px solid #e8e5e0', borderRadius:6,
       padding:'10px 14px', marginBottom:8,
       display:'flex', alignItems:'flex-start', gap:12 }}>
@@ -250,16 +429,30 @@ function RollCard({ roll, admin, onDelete }) {
             Goal: {roll.goal}
           </div>
         )}
+        {roll.characteristic && (
+          <div style={{ fontSize:'0.7rem', color:'#1b4f72', marginBottom:2 }}>
+            {roll.characteristic}{roll.characteristicBonus > 0 ? ` +${roll.characteristicBonus}` : ''}
+          </div>
+        )}
         <div style={{ fontSize:'0.7rem', color:'#aaa' }}>{breakdown}</div>
       </div>
       {admin && (
-        <button onClick={onDelete}
-          style={{ background:'none', border:'none', cursor:'pointer',
-            color:'#ccc', fontSize:'0.8rem', padding:'0 2px', flexShrink:0 }}>
-          🗑
-        </button>
+        <div style={{ display:'flex', gap:4, flexShrink:0 }}>
+          <button onClick={() => setEditing(true)}
+            style={{ background:'none', border:'none', cursor:'pointer',
+              color:'#aaa', fontSize:'0.8rem', padding:'0 2px' }}>
+            ✎
+          </button>
+          <button onClick={onDelete}
+            style={{ background:'none', border:'none', cursor:'pointer',
+              color:'#ccc', fontSize:'0.8rem', padding:'0 2px' }}>
+            🗑
+          </button>
+        </div>
       )}
     </div>
+    {editing && <EditRollModal roll={roll} onClose={() => setEditing(false)}/>}
+    </>
   )
 }
 
