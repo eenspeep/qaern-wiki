@@ -500,43 +500,46 @@ function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categori
 
 // ─── Subgroups Editor ─────────────────────────────────────────────────────────
 function SubgroupsEditor({ subgroups = [], onChange }) {
+  const [local, setLocal] = useState(subgroups)
   const [editingId, setEditingId] = useState(null)
   const lb = {display:'block',fontSize:'0.69rem',color:'#666',marginBottom:3,textTransform:'uppercase',letterSpacing:'0.07em',marginTop:10}
   const inp = {width:'100%',background:'#f8f7f4',color:'#222',border:'1px solid #ccc9c0',borderRadius:3,padding:'6px 10px',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.9rem',marginBottom:8,boxSizing:'border-box'}
 
+  const sync = updated => { setLocal(updated); onChange(updated) }
   const add = () => {
     const sg = { id: Date.now().toString(36), title: '', content: '' }
-    onChange([...subgroups, sg])
+    const updated = [...local, sg]
+    sync(updated)
     setEditingId(sg.id)
   }
-  const upd = (id, patch) => onChange(subgroups.map(sg => sg.id === id ? { ...sg, ...patch } : sg))
-  const del = (id) => { onChange(subgroups.filter(sg => sg.id !== id)); if (editingId === id) setEditingId(null) }
-  const mv = (i, d) => { const j = i + d; if (j < 0 || j >= subgroups.length) return; const u = [...subgroups]; [u[i],u[j]]=[u[j],u[i]]; onChange(u) }
+  const upd = (id, patch) => sync(local.map(sg => sg.id === id ? { ...sg, ...patch } : sg))
+  const del = (id) => { sync(local.filter(sg => sg.id !== id)); if (editingId === id) setEditingId(null) }
+  const mv = (i, d) => { const j = i + d; if (j < 0 || j >= local.length) return; const u = [...local]; [u[i],u[j]]=[u[j],u[i]]; sync(u) }
 
   return (
     <div style={{marginTop:14}}>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
         <label style={{...lb,marginTop:0,flex:1}}>Sub-groups</label>
-        <button onClick={add}
+        <button type='button' onClick={add}
           style={{padding:'3px 10px',border:'1px solid #ccc9c0',borderRadius:3,background:'#eeecea',cursor:'pointer',fontSize:'0.76rem',fontFamily:"'Source Serif 4',Georgia,serif",color:'#444'}}>
           + Add
         </button>
       </div>
-      {subgroups.map((sg, i) => (
+      {local.map((sg, i) => (
         <div key={sg.id} style={{border:'1px solid #ccc9c0',borderRadius:4,marginBottom:8,background:'#f8f7f4'}}>
           <div style={{display:'flex',alignItems:'center',gap:4,padding:'6px 8px',borderBottom: editingId===sg.id ? '1px solid #ccc9c0' : 'none',background:'#eeecea',borderRadius: editingId===sg.id ? '4px 4px 0 0' : 4}}>
             <span style={{flex:1,fontSize:'0.85rem',fontFamily:"'IM Fell English',serif",color:'#1b4f72',fontStyle: sg.title ? 'normal' : 'italic',opacity: sg.title ? 1 : 0.5}}>
               {sg.title || 'Untitled sub-group'}
             </span>
-            <button onClick={()=>mv(i,-1)} disabled={i===0} title='Move up'
+            <button type='button' onClick={()=>mv(i,-1)} disabled={i===0} title='Move up'
               style={{background:'none',border:'none',cursor:i===0?'default':'pointer',color:i===0?'#ccc':'#888',fontSize:'0.75rem',padding:'0 3px',lineHeight:1}}>↑</button>
-            <button onClick={()=>mv(i,1)} disabled={i===subgroups.length-1} title='Move down'
-              style={{background:'none',border:'none',cursor:i===subgroups.length-1?'default':'pointer',color:i===subgroups.length-1?'#ccc':'#888',fontSize:'0.75rem',padding:'0 3px',lineHeight:1}}>↓</button>
-            <button onClick={()=>setEditingId(editingId===sg.id ? null : sg.id)}
+            <button type='button' onClick={()=>mv(i,1)} disabled={i===local.length-1} title='Move down'
+              style={{background:'none',border:'none',cursor:i===local.length-1?'default':'pointer',color:i===local.length-1?'#ccc':'#888',fontSize:'0.75rem',padding:'0 3px',lineHeight:1}}>↓</button>
+            <button type='button' onClick={()=>setEditingId(editingId===sg.id ? null : sg.id)}
               style={{background:'none',border:'1px solid #ccc9c0',borderRadius:3,cursor:'pointer',fontSize:'0.72rem',color:'#555',padding:'1px 7px',fontFamily:"'Source Serif 4',Georgia,serif"}}>
               {editingId===sg.id ? 'Done' : 'Edit'}
             </button>
-            <button onClick={()=>del(sg.id)} title='Delete sub-group'
+            <button type='button' onClick={()=>del(sg.id)} title='Delete sub-group'
               style={{background:'none',border:'none',cursor:'pointer',fontSize:'0.78rem',color:'#b44',padding:'0 2px',lineHeight:1}}>✕</button>
           </div>
           {editingId===sg.id && (
@@ -552,8 +555,6 @@ function SubgroupsEditor({ subgroups = [], onChange }) {
     </div>
   )
 }
-
-
 function PresenceBubbles({ online, currentUser }) {
   const others = Object.entries(online).filter(([uid])=>uid!==currentUser?.uid)
   if (others.length===0) return null
