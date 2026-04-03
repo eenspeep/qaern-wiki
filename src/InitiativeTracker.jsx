@@ -34,7 +34,7 @@ const BLANK_PLAYER = (name) => ({
 const BLANK_GROUP = (name) => ({
   id: uid(), name,
   monsters: [],
-  turnTaken: false,
+  turnsUsed: 0,
 })
 
 const BLANK_MONSTER = (name, hp) => ({
@@ -133,35 +133,56 @@ function ConditionStyles() {
   )
 }
 
+// ─── Turn logic helpers ────────────────────────────────────────────────────────
+// Total turns a group gets per round: 1 base + max extraTurns among living monsters
+const groupTotalTurns = (group) => {
+  const liveMons = group.monsters.filter(m => !m.dead)
+  if (!liveMons.length) return 0
+  const maxExtra = Math.max(0, ...liveMons.map(m => m.extraTurns || 0))
+  return 1 + maxExtra
+}
+const groupIsDone = (group) => (group.turnsUsed || 0) >= groupTotalTurns(group)
+const monstersHaveTurns = (groups) => groups.some(g => !groupIsDone(g) && groupTotalTurns(g) > 0)
+const playersHaveTurns = (players) => players.filter(p => !p.dead).some(p => !p.turnTaken)
+
+const advanceRound = (s, newPlayers, newGroups) => {
+  const { round, malice = 0 } = s
+  const resetPlayers = newPlayers.map(p => ({ ...p, turnTaken: false, triggered: false, main: false, maneuver: false, move: false, heroicResource: false }))
+  const resetGroups = newGroups.map(g => ({ ...g, turnsUsed: 0, monsters: g.monsters.map(m => ({ ...m, triggered: false })) }))
+  const maliceTick = malice + (round + 1) + resetPlayers.filter(p => !p.dead).length
+  return { ...s, round: round + 1, phase: 'players', players: resetPlayers, monsterGroups: resetGroups, malice: maliceTick }
+}
+
 // Pure turn-logic helpers — used both for optimistic local updates and Firestore transactions
 const applyPlayerEndTurn = (s, playerId) => {
-  const { round, players, monsterGroups, malice = 0 } = s
-  const newPlayers = players.map(p =>
+  const newPlayers = s.players.map(p =>
     p.id === playerId ? { ...p, turnTaken: true, main: false, maneuver: false, move: false } : p
   )
-  const allDone = newPlayers.filter(p => !p.dead).every(p => p.turnTaken)
-  if (allDone && monsterGroups.every(g => g.turnTaken)) {
-    const newRoundPlayers = newPlayers.map(p => ({ ...p, turnTaken: false, triggered: false, main: false, maneuver: false, move: false, heroicResource: false }))
-    const resetGroups = monsterGroups.map(g => ({ ...g, turnTaken: false, monsters: g.monsters.map(m => ({ ...m, triggered: false })) }))
-    const maliceTick = malice + (round + 1) + newRoundPlayers.filter(p => !p.dead).length
-    return { ...s, round: round + 1, phase: 'players', players: newRoundPlayers, monsterGroups: resetGroups, malice: maliceTick }
-  } else {
+  const pHave = playersHaveTurns(newPlayers)
+  const mHave = monstersHaveTurns(s.monsterGroups)
+  if (!pHave && !mHave) {
+    return advanceRound(s, newPlayers, s.monsterGroups)
+  } else if (mHave) {
     return { ...s, phase: 'monsters', players: newPlayers }
+  } else {
+    // no monsters with turns left — stay on players so remaining players can go
+    return { ...s, phase: 'players', players: newPlayers }
   }
 }
 
 const applyMonsterGroupEndTurn = (s, groupId) => {
-  const { round, players, monsterGroups, malice = 0 } = s
-  const newGroups = monsterGroups.map(g => g.id === groupId ? { ...g, turnTaken: true } : g)
-  const allPDone = players.filter(p => !p.dead).every(p => p.turnTaken)
-  const allMDone = newGroups.every(g => g.turnTaken)
-  if (allPDone && allMDone) {
-    const newRoundPlayers = players.map(p => ({ ...p, turnTaken: false, triggered: false, main: false, maneuver: false, move: false, heroicResource: false }))
-    const resetGroups = newGroups.map(g => ({ ...g, turnTaken: false, monsters: g.monsters.map(m => ({ ...m, triggered: false })) }))
-    const maliceTick = malice + (round + 1) + newRoundPlayers.filter(p => !p.dead).length
-    return { ...s, round: round + 1, phase: 'players', players: newRoundPlayers, monsterGroups: resetGroups, malice: maliceTick }
-  } else {
+  const newGroups = s.monsterGroups.map(g =>
+    g.id === groupId ? { ...g, turnsUsed: (g.turnsUsed || 0) + 1 } : g
+  )
+  const pHave = playersHaveTurns(s.players)
+  const mHave = monstersHaveTurns(newGroups)
+  if (!pHave && !mHave) {
+    return advanceRound(s, s.players, newGroups)
+  } else if (pHave) {
     return { ...s, phase: 'players', monsterGroups: newGroups }
+  } else {
+    // all players done but monsters still have turns — stay on monsters
+    return { ...s, phase: 'monsters', monsterGroups: newGroups }
   }
 }
 
@@ -452,7 +473,7 @@ function MonsterRow({ monster, admin, onUpdate, onRemove }) {
 }
 
 // ─── Monster group card ────────────────────────────────────────────────────────
-function MonsterGroupCard({ group, admin, phase, onUpdate, onRemove, onEndTurn }) {
+function MonsterGroupCard({ group, admin, phase, onUpdate, onRemove, onEndTurn, onUnEndTurn }) {
   const [newName, setNewName] = useState('')
   const [newHp, setNewHp] = useState('')
   const [editingName, setEditingName] = useState(false)
@@ -468,15 +489,18 @@ function MonsterGroupCard({ group, admin, phase, onUpdate, onRemove, onEndTurn }
     setNewName(''); setNewHp('')
   }
 
-  const canEndTurn = phase === 'monsters' && !group.turnTaken && admin
+  const totalTurns = groupTotalTurns(group)
+  const turnsUsed = group.turnsUsed || 0
+  const groupDone = turnsUsed >= totalTurns
+  const canEndTurn = phase === 'monsters' && !groupDone && admin && totalTurns > 0
   const allDead = group.monsters.length > 0 && group.monsters.every(m => m.dead)
 
   return (
-    <div style={{ borderRadius: 6, border: `2px solid ${group.turnTaken ? '#ccc' : '#e0c0c0'}`,
-      background: group.turnTaken ? '#e8e4e0' : '#fff8f6',
+    <div style={{ borderRadius: 6, border: `2px solid ${groupDone ? '#ccc' : '#e0c0c0'}`,
+      background: groupDone ? '#e8e4e0' : '#fff8f6',
       padding: '10px 12px', marginBottom: 8,
       boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-      opacity: allDead ? 0.4 : group.turnTaken ? 0.55 : 1,
+      opacity: allDead ? 0.4 : groupDone ? 0.55 : 1,
       transition: 'opacity 0.2s, background 0.2s' }}>
 
       {/* Group name */}
@@ -489,13 +513,20 @@ function MonsterGroupCard({ group, admin, phase, onUpdate, onRemove, onEndTurn }
                 fontSize:'0.92rem', fontFamily:"'IM Fell English', serif", color: MONSTER_COLOR }}/>
           : <span onDoubleClick={() => admin && (setNameVal(group.name), setEditingName(true))}
               style={{ fontFamily:"'IM Fell English', serif", fontSize:'0.92rem',
-                color: group.turnTaken ? '#aaa' : MONSTER_COLOR, fontWeight:600, flex:1,
+                color: groupDone ? '#aaa' : MONSTER_COLOR, fontWeight:600, flex:1,
                 cursor: admin ? 'text' : 'default',
-                textDecoration: group.turnTaken ? 'line-through' : 'none' }}>
+                textDecoration: groupDone ? 'line-through' : 'none' }}>
               {group.name}
             </span>
         }
-        {group.turnTaken && <span style={{ fontSize:'0.65rem', color:'#aaa', fontStyle:'italic' }}>done</span>}
+        {groupDone && <span style={{ fontSize:'0.65rem', color:'#aaa', fontStyle:'italic' }}>done</span>}
+        {!groupDone && turnsUsed > 0 && <span style={{ fontSize:'0.65rem', color:'#c84a4a', fontStyle:'italic' }}>turn {turnsUsed + 1}/{totalTurns}</span>}
+        {turnsUsed > 0 && admin && (
+          <button onClick={onUnEndTurn} title='Un-end turn'
+            style={{ background:'none', border:'1px solid rgba(150,150,150,0.25)', borderRadius:3,
+              cursor:'pointer', fontSize:'0.58rem', color:'#888', padding:'0px 4px', lineHeight:'1.6',
+              fontFamily:"'Source Serif 4',Georgia,serif" }}>↩</button>
+        )}
         {admin && <button onClick={onRemove}
           style={{ background:'none', border:'none', cursor:'pointer', fontSize:'0.75rem', color:'#bbb', padding:'0 2px' }}>✕</button>}
       </div>
@@ -538,7 +569,7 @@ function MonsterGroupCard({ group, admin, phase, onUpdate, onRemove, onEndTurn }
 }
 
 // ─── Player card ──────────────────────────────────────────────────────────────
-function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn }) {
+function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn, onUnEndTurn }) {
   const canEdit = !!user  // all logged-in users can check action boxes
   const isMe = user?.displayName === player.name
   const canEndTurn = phase === 'players' && !player.turnTaken && !player.dead && canEdit
@@ -564,6 +595,12 @@ function PlayerCard({ player, phase, user, admin, onUpdate, onRemove, onEndTurn 
           {player.name}
         </span>
         {player.turnTaken && <span style={{ fontSize:'0.65rem', color:'#aaa', fontStyle:'italic' }}>done</span>}
+        {player.turnTaken && canEdit && (
+          <button onClick={onUnEndTurn} title='Un-end turn'
+            style={{ background:'none', border:'1px solid rgba(150,150,150,0.25)', borderRadius:3,
+              cursor:'pointer', fontSize:'0.58rem', color:'#888', padding:'0px 4px', lineHeight:'1.6',
+              fontFamily:"'Source Serif 4',Georgia,serif" }}>↩</button>
+        )}
         {admin && <>
           <button onClick={() => upd({ dead: !player.dead })}
             style={{ background:'none', border:'none', cursor:'pointer', fontSize:'0.75rem',
@@ -815,7 +852,7 @@ export default function InitiativeTracker({ user, onClose }) {
       ...state,
       round: 1, phase: 'players',
       players: state.players.map(p => ({ ...p, turnTaken:false, triggered:false, main:false, maneuver:false, move:false, heroicResource:false, dead:false })),
-      monsterGroups: state.monsterGroups.map(g => ({ ...g, turnTaken:false,
+      monsterGroups: state.monsterGroups.map(g => ({ ...g, turnsUsed:0,
         monsters: g.monsters.map(m => ({ ...m, hp:m.maxHp, triggered:false, dead:false,
           ...(m.tier==='minion' ? {hp:(m.count||1)*(m.hpPer||1)} : {}) })) })),
     }
@@ -843,7 +880,7 @@ export default function InitiativeTracker({ user, onClose }) {
 
   const { round, phase, players, monsterGroups, malice = 0 } = state || BLANK_STATE
   const allPlayersDone = players.filter(p=>!p.dead).every(p=>p.turnTaken)
-  const allMonstersDone = monsterGroups.every(g=>g.turnTaken)
+  const allMonstersDone = !monstersHaveTurns(monsterGroups)
 
   const playerEndTurn = async (playerId) => {
     // Optimistic local update for snappy UI
@@ -881,9 +918,17 @@ export default function InitiativeTracker({ user, onClose }) {
   const updatePlayer = upd => update({ ...state, players:players.map(p=>p.id===upd.id?upd:p) })
   const removePlayer = id => update({ ...state, players:players.filter(p=>p.id!==id) })
   const addPlayer = () => { if(!newPlayerName.trim())return; update({...state,players:[...players,BLANK_PLAYER(newPlayerName.trim())]}); setNewPlayerName('') }
+  const unEndPlayerTurn = (playerId) => {
+    const newPlayers = players.map(p => p.id === playerId ? { ...p, turnTaken: false } : p)
+    update({ ...state, phase: 'players', players: newPlayers })
+  }
   const updateGroup = upd => update({ ...state, monsterGroups:monsterGroups.map(g=>g.id===upd.id?upd:g) })
   const removeGroup = id => update({ ...state, monsterGroups:monsterGroups.filter(g=>g.id!==id) })
   const addGroup = () => { if(!newGroupName.trim())return; update({...state,monsterGroups:[...monsterGroups,BLANK_GROUP(newGroupName.trim())]}); setNewGroupName('') }
+  const unEndMonsterGroup = (groupId) => {
+    const newGroups = monsterGroups.map(g => g.id === groupId ? { ...g, turnsUsed: Math.max(0, (g.turnsUsed || 0) - 1) } : g)
+    update({ ...state, phase: 'monsters', monsterGroups: newGroups })
+  }
   const resetCombat = () => {
     if(!confirm('Reset initiative? Clears monsters and resets all turns.'))return
     update({ ...BLANK_STATE, players:players.map(p=>({...p,turnTaken:false,triggered:false,main:false,maneuver:false,move:false,dead:false})) })
@@ -1003,7 +1048,7 @@ export default function InitiativeTracker({ user, onClose }) {
             <div style={{ flex:isMobile?'none':1,overflowY:isMobile?'visible':'auto',padding:'10px 12px' }}>
               {players.map(p=>(
                 <PlayerCard key={p.id} player={p} phase={phase} user={user} admin={admin}
-                  onUpdate={updatePlayer} onRemove={()=>removePlayer(p.id)} onEndTurn={()=>playerEndTurn(p.id)}/>
+                  onUpdate={updatePlayer} onRemove={()=>removePlayer(p.id)} onEndTurn={()=>playerEndTurn(p.id)} onUnEndTurn={()=>unEndPlayerTurn(p.id)}/>
               ))}
               {user&&(
                 <div style={{ display:'flex',gap:6,marginTop:8 }}>
@@ -1084,7 +1129,7 @@ export default function InitiativeTracker({ user, onClose }) {
               </div>
               {monsterGroups.map(g=>(
                 <MonsterGroupCard key={g.id} group={g} admin={admin} phase={phase}
-                  onUpdate={updateGroup} onRemove={()=>removeGroup(g.id)} onEndTurn={()=>monsterGroupEndTurn(g.id)}/>
+                  onUpdate={updateGroup} onRemove={()=>removeGroup(g.id)} onEndTurn={()=>monsterGroupEndTurn(g.id)} onUnEndTurn={()=>unEndMonsterGroup(g.id)}/>
               ))}
               {admin&&(
                 <div style={{ display:'flex',gap:6,marginTop:8 }}>
