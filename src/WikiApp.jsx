@@ -16,7 +16,7 @@ import Downtime from './Downtime'
 import Chat from './Chat'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-// Category tree: each entry is { name: string, subcategories: string[] }
+// Category tree: each node is { name: string, subcategories: CategoryNode[] }
 const DEFAULT_CATEGORIES = [
   { name: 'Lore & History', subcategories: [] },
   { name: 'Peoples',        subcategories: [] },
@@ -24,14 +24,34 @@ const DEFAULT_CATEGORIES = [
   { name: 'Factions',       subcategories: [] },
 ]
 
-// Flatten tree to all fully-qualified category strings (e.g. 'Peoples > Elves')
-function flattenCategories(cats) {
+const UNIVERSAL_TAG = 'qaern'
+const CAMPAIGNS = [
+  { id: 'sixth-siege',  label: 'Sixth Siege on Melphö' },
+  { id: 'sky-pirates',  label: 'Sky Pirates of Qærn' },
+]
+
+// Recursively flatten tree to all fully-qualified path strings
+function flattenCategories(cats, prefix = '') {
   const result = []
   cats.forEach(c => {
-    result.push(c.name)
-    c.subcategories.forEach(s => result.push(c.name + ' > ' + s))
+    const path = prefix ? `${prefix} > ${c.name}` : c.name
+    result.push(path)
+    if (c.subcategories?.length) result.push(...flattenCategories(c.subcategories, path))
   })
   return result
+}
+
+// Deep-clone a category node
+function cloneCatNode(c) {
+  return { name: c.name, subcategories: (c.subcategories || []).map(cloneCatNode) }
+}
+
+// Insert a path (array of name parts) into a mutable tree
+function insertCatPath(nodes, parts) {
+  if (!parts.length) return
+  let node = nodes.find(n => n.name === parts[0])
+  if (!node) { node = { name: parts[0], subcategories: [] }; nodes.push(node) }
+  insertCatPath(node.subcategories, parts.slice(1))
 }
 
 // ─── Mobile detection hook ────────────────────────────────────────────────────
@@ -378,12 +398,6 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
       )}
       <div className='article-body' style={{fontSize:'0.91rem'}} onClick={handleBodyClick} dangerouslySetInnerHTML={{__html:linkedContent}}/>
       <div style={{clear:'both'}}/>
-      {(article.subgroups||[]).map(sg=>(
-        <div key={sg.id} style={{marginTop:'1.5rem',paddingTop:'1rem',borderTop:'1px solid #e8e5e0'}}>
-          <h2 style={{fontFamily:"'IM Fell English',serif",fontSize:'1.25rem',color:'#1a1a1a',marginBottom:'0.5rem'}}>{sg.title}</h2>
-          <div className='article-body' style={{fontSize:'0.91rem'}} onClick={handleBodyClick} dangerouslySetInnerHTML={{__html:linkifyContent(sg.content||'',articles||{},article.id,onNavigate)}}/>
-        </div>
-      ))}
       {article.updatedAt&&(
         <div style={{marginTop:'1.5rem',paddingTop:'0.75rem',borderTop:'1px solid #e8e5e0',fontSize:'0.76rem',color:'#aaa'}}>
           Last edited {new Date(article.updatedAt.seconds*1000).toLocaleString()} {article.updatedBy&&`by ${article.updatedBy}`}
@@ -438,7 +452,7 @@ function ChangelogPanel({ onClose }) {
 }
 
 // ─── Edit Form ────────────────────────────────────────────────────────────────
-function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categories }) {
+function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categories, activeCampaign }) {
   const [preview, setPreview] = useState(false)
   const isMobile = useIsMobile()
   const inp = {width:'100%',background:'#f8f7f4',color:'#222',border:'1px solid #ccc9c0',borderRadius:3,padding:'6px 10px',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.9rem',marginBottom:8,boxSizing:'border-box'}
@@ -459,7 +473,24 @@ function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categori
         : <>
             <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:'0 1rem'}}>
               <div><label style={lb}>Title</label><input style={inp} value={draft.title} onChange={e=>setDraft(p=>({...p,title:e.target.value}))} placeholder='e.g. The Worldheart'/></div>
-              <div><label style={lb}>Category</label><select style={inp} value={draft.category} onChange={e=>setDraft(p=>({...p,category:e.target.value}))}>{(categories||DEFAULT_CATEGORIES).map(c=><option key={c}>{c}</option>)}</select></div>
+              <div><label style={lb}>Category</label><select style={inp} value={draft.category} onChange={e=>setDraft(p=>({...p,category:e.target.value}))}>{(categories||flattenCategories(DEFAULT_CATEGORIES)).map(c=><option key={c}>{c}</option>)}</select></div>
+            </div>
+            <label style={lb}>Campaign Tags</label>
+            <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:8}}>
+              {[{id:UNIVERSAL_TAG,label:'Qærn (Universal)'},...CAMPAIGNS].map(c=>{
+                const checked = (draft.tags||(activeCampaign?[UNIVERSAL_TAG,activeCampaign]:[UNIVERSAL_TAG])).includes(c.id)
+                return (
+                  <label key={c.id} style={{display:'flex',alignItems:'center',gap:5,fontSize:'0.82rem',cursor:'pointer',userSelect:'none',color:checked?'#1b4f72':'#888'}}>
+                    <input type='checkbox' checked={checked}
+                      onChange={e=>{
+                        const cur = draft.tags||(activeCampaign?[UNIVERSAL_TAG,activeCampaign]:[UNIVERSAL_TAG])
+                        setDraft(p=>({...p,tags:e.target.checked?[...new Set([...cur,c.id])]:cur.filter(t=>t!==c.id)}))
+                      }}
+                      style={{accentColor:'#1b4f72',width:13,height:13}}/>
+                    {c.label}
+                  </label>
+                )
+              })}
             </div>
             <label style={lb}>Subtitle / Tagline</label>
             <input style={inp} value={draft.subtitle||''} onChange={e=>setDraft(p=>({...p,subtitle:e.target.value}))} placeholder='e.g. Mythic Treasure of Dwarvenkind'/>
@@ -486,7 +517,6 @@ function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categori
             <InfoboxEditor infobox={draft.infobox||{}} onChange={ib=>setDraft(p=>({...p,infobox:ib}))}/>
             <label style={{...lb,marginTop:14}}>Article Body</label>
             <RichEditor value={draft.content||''} onChange={html=>setDraft(p=>({...p,content:html}))}/>
-            <SubgroupsEditor subgroups={draft.subgroups||[]} onChange={sgs=>setDraft(p=>({...p,subgroups:sgs}))}/>
           </>
       }
       <div style={{marginTop:14,display:'flex',alignItems:'center'}}>
@@ -494,64 +524,6 @@ function EditForm({ draft, setDraft, onSave, onCancel, onDelete, isNew, categori
         <button style={bt()} onClick={onCancel}>Cancel</button>
         {!isNew&&onDelete&&<button style={{...bt('danger'),marginLeft:'auto'}} onClick={onDelete}>Delete Article</button>}
       </div>
-    </div>
-  )
-}
-
-// ─── Subgroups Editor ─────────────────────────────────────────────────────────
-function SubgroupsEditor({ subgroups = [], onChange }) {
-  const [local, setLocal] = useState(subgroups)
-  const [editingId, setEditingId] = useState(null)
-  const lb = {display:'block',fontSize:'0.69rem',color:'#666',marginBottom:3,textTransform:'uppercase',letterSpacing:'0.07em',marginTop:10}
-  const inp = {width:'100%',background:'#f8f7f4',color:'#222',border:'1px solid #ccc9c0',borderRadius:3,padding:'6px 10px',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.9rem',marginBottom:8,boxSizing:'border-box'}
-
-  const sync = updated => { setLocal(updated); onChange(updated) }
-  const add = () => {
-    const sg = { id: Date.now().toString(36), title: '', content: '' }
-    const updated = [...local, sg]
-    sync(updated)
-    setEditingId(sg.id)
-  }
-  const upd = (id, patch) => sync(local.map(sg => sg.id === id ? { ...sg, ...patch } : sg))
-  const del = (id) => { sync(local.filter(sg => sg.id !== id)); if (editingId === id) setEditingId(null) }
-  const mv = (i, d) => { const j = i + d; if (j < 0 || j >= local.length) return; const u = [...local]; [u[i],u[j]]=[u[j],u[i]]; sync(u) }
-
-  return (
-    <div style={{marginTop:14}}>
-      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-        <label style={{...lb,marginTop:0,flex:1}}>Sub-groups</label>
-        <button type='button' onClick={add}
-          style={{padding:'3px 10px',border:'1px solid #ccc9c0',borderRadius:3,background:'#eeecea',cursor:'pointer',fontSize:'0.76rem',fontFamily:"'Source Serif 4',Georgia,serif",color:'#444'}}>
-          + Add
-        </button>
-      </div>
-      {local.map((sg, i) => (
-        <div key={sg.id} style={{border:'1px solid #ccc9c0',borderRadius:4,marginBottom:8,background:'#f8f7f4'}}>
-          <div style={{display:'flex',alignItems:'center',gap:4,padding:'6px 8px',borderBottom: editingId===sg.id ? '1px solid #ccc9c0' : 'none',background:'#eeecea',borderRadius: editingId===sg.id ? '4px 4px 0 0' : 4}}>
-            <span style={{flex:1,fontSize:'0.85rem',fontFamily:"'IM Fell English',serif",color:'#1b4f72',fontStyle: sg.title ? 'normal' : 'italic',opacity: sg.title ? 1 : 0.5}}>
-              {sg.title || 'Untitled sub-group'}
-            </span>
-            <button type='button' onClick={()=>mv(i,-1)} disabled={i===0} title='Move up'
-              style={{background:'none',border:'none',cursor:i===0?'default':'pointer',color:i===0?'#ccc':'#888',fontSize:'0.75rem',padding:'0 3px',lineHeight:1}}>↑</button>
-            <button type='button' onClick={()=>mv(i,1)} disabled={i===local.length-1} title='Move down'
-              style={{background:'none',border:'none',cursor:i===local.length-1?'default':'pointer',color:i===local.length-1?'#ccc':'#888',fontSize:'0.75rem',padding:'0 3px',lineHeight:1}}>↓</button>
-            <button type='button' onClick={()=>setEditingId(editingId===sg.id ? null : sg.id)}
-              style={{background:'none',border:'1px solid #ccc9c0',borderRadius:3,cursor:'pointer',fontSize:'0.72rem',color:'#555',padding:'1px 7px',fontFamily:"'Source Serif 4',Georgia,serif"}}>
-              {editingId===sg.id ? 'Done' : 'Edit'}
-            </button>
-            <button type='button' onClick={()=>del(sg.id)} title='Delete sub-group'
-              style={{background:'none',border:'none',cursor:'pointer',fontSize:'0.78rem',color:'#b44',padding:'0 2px',lineHeight:1}}>✕</button>
-          </div>
-          {editingId===sg.id && (
-            <div style={{padding:'8px 10px'}}>
-              <label style={lb}>Sub-group Title</label>
-              <input style={inp} value={sg.title} onChange={e=>upd(sg.id,{title:e.target.value})} placeholder='e.g. Notable Members'/>
-              <label style={lb}>Content</label>
-              <RichEditor value={sg.content} onChange={html=>upd(sg.id,{content:html})}/>
-            </div>
-          )}
-        </div>
-      ))}
     </div>
   )
 }
@@ -766,7 +738,7 @@ export default function WikiApp() {
   const [editing, setEditing] = useState(false)
   const [editDraft, setEditDraft] = useState(null)
   const [creating, setCreating] = useState(false)
-  const [newArt, setNewArt] = useState({ title:'',category:'Lore & History',subtitle:'',content:'',infobox:{} })
+  const [newArt, setNewArt] = useState({ title:'',category:'Lore & History',subtitle:'',content:'',infobox:{},tags:[UNIVERSAL_TAG,'sixth-siege'] })
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 680)
   const [showChangelog, setShowChangelog] = useState(false)
   const [showTracker, setShowTracker] = useState(false)
@@ -779,8 +751,9 @@ export default function WikiApp() {
   const [collapsedCats, setCollapsedCats] = useState({})
   const [newCatInput, setNewCatInput] = useState('')
   const [showNewCatInput, setShowNewCatInput] = useState(false)
-  const [editingCat, setEditingCat] = useState(null)   // { type:'cat'|'sub', catIdx, subIdx?, value }
-  const [newSubInput, setNewSubInput] = useState(null)  // catIdx or null
+  const [editingCat, setEditingCat] = useState(null)   // { path: string, value: string }
+  const [newSubInput, setNewSubInput] = useState(null)  // parent path string or null
+  const [activeCampaign, setActiveCampaign] = useState('sixth-siege')
   // Drag state
   const [dragArticle, setDragArticle] = useState(null)  // { id, fromCategory }
   const [dragOverCat, setDragOverCat] = useState(null)  // category key being hovered
@@ -857,7 +830,7 @@ export default function WikiApp() {
     })
     await logChange('created', newArt.title)
     setCurrentId(id); setCreating(false)
-    setNewArt({ title:'',category:'Lore & History',subtitle:'',content:'',infobox:{} })
+    setNewArt({ title:'',category:'Lore & History',subtitle:'',content:'',infobox:{},tags:[UNIVERSAL_TAG,activeCampaign] })
   }
 
   const saveEdit = async () => {
@@ -881,32 +854,23 @@ export default function WikiApp() {
     setCurrentId(remaining[0]||null); setEditing(false)
   }
 
-  const filtered = Object.values(articles).filter(a =>
-    search==='' || a.title.toLowerCase().includes(search.toLowerCase()) ||
-    (a.content||'').replace(/<[^>]*>/g,'').toLowerCase().includes(search.toLowerCase())
-  )
-
-  // Build full category tree, merging in any categories from articles not yet in tree
-  const allFlat = flattenCategories(categories)
-  const catTree = [...categories.map(c => ({...c, subcategories:[...c.subcategories]}))]
-  Object.values(articles).forEach(a => {
-    if (!a.category) return
-    if (a.category.includes(' > ')) {
-      const [parent, sub] = a.category.split(' > ')
-      let node = catTree.find(c => c.name === parent)
-      if (!node) { node = { name: parent, subcategories: [] }; catTree.push(node) }
-      if (!node.subcategories.includes(sub)) node.subcategories.push(sub)
-    } else if (!catTree.find(c => c.name === a.category)) {
-      catTree.push({ name: a.category, subcategories: [] })
-    }
+  // Campaign-filtered article list (untagged articles are legacy = visible everywhere)
+  const filtered = Object.values(articles).filter(a => {
+    const tags = a.tags || [UNIVERSAL_TAG, 'sixth-siege']
+    if (!tags.includes(UNIVERSAL_TAG) && !tags.includes(activeCampaign)) return false
+    if (search === '') return true
+    return a.title.toLowerCase().includes(search.toLowerCase()) ||
+      (a.content||'').replace(/<[^>]*>/g,'').toLowerCase().includes(search.toLowerCase())
   })
 
+  // Build full category tree from stored categories + article paths
+  const catTree = categories.map(cloneCatNode)
+  filtered.forEach(a => { if (a.category) insertCatPath(catTree, a.category.split(' > ')) })
+
+  // Map each category path to its articles
   const byCategory = {}
-  catTree.forEach(c => {
-    byCategory[c.name] = filtered.filter(a => a.category === c.name)
-    c.subcategories.forEach(s => {
-      byCategory[`${c.name} > ${s}`] = filtered.filter(a => a.category === `${c.name} > ${s}`)
-    })
+  flattenCategories(catTree).forEach(path => {
+    byCategory[path] = filtered.filter(a => a.category === path)
   })
 
   const addCategory = () => {
@@ -917,48 +881,49 @@ export default function WikiApp() {
     setShowNewCatInput(false)
   }
 
-  const addSubcategory = (catIdx, subName) => {
-    const name = subName.trim()
+  // Add a child node at any depth given the parent's full path string
+  const addSubcategoryByPath = (parentPath, childName) => {
+    const name = childName.trim()
     if (!name) return
-    setCategories(cats => cats.map((c,i) =>
-      i === catIdx && !c.subcategories.includes(name)
-        ? { ...c, subcategories: [...c.subcategories, name] }
-        : c
-    ))
+    setCategories(cats => {
+      const cloned = cats.map(cloneCatNode)
+      const parts = parentPath.split(' > ')
+      let nodes = cloned
+      for (const part of parts) {
+        const node = nodes.find(n => n.name === part)
+        if (!node) return cloned
+        nodes = node.subcategories
+      }
+      if (!nodes.find(n => n.name === name)) nodes.push({ name, subcategories: [] })
+      return cloned
+    })
   }
 
-  const renameCategory = (catIdx, newName) => {
-    const old = categories[catIdx].name
+  // Rename any category node given its full path; updates all affected articles
+  const renameCategoryByPath = (oldPath, newName) => {
     const trimmed = newName.trim()
-    if (!trimmed || trimmed === old) return
-    // Update articles that use this category
+    if (!trimmed) return
+    const parts = oldPath.split(' > ')
+    const newPath = [...parts.slice(0, -1), trimmed].join(' > ')
     Object.values(articles).forEach(async a => {
-      if (a.category === old) {
-        await setDoc(doc(db,'articles',a.id), {...a, category: trimmed}, {merge:true})
-      }
-      if (a.category && a.category.startsWith(old + ' > ')) {
-        const newCat = trimmed + ' > ' + a.category.slice(old.length + 3)
-        await setDoc(doc(db,'articles',a.id), {...a, category: newCat}, {merge:true})
-      }
+      if (!a.category) return
+      if (a.category === oldPath)
+        await setDoc(doc(db,'articles',a.id), {category: newPath}, {merge:true})
+      else if (a.category.startsWith(oldPath + ' > '))
+        await setDoc(doc(db,'articles',a.id), {category: newPath + a.category.slice(oldPath.length)}, {merge:true})
     })
-    setCategories(cats => cats.map((c,i) => i === catIdx ? { ...c, name: trimmed } : c))
-  }
-
-  const renameSubcategory = (catIdx, subIdx, newName) => {
-    const parentName = categories[catIdx].name
-    const oldSub = categories[catIdx].subcategories[subIdx]
-    const trimmed = newName.trim()
-    if (!trimmed || trimmed === oldSub) return
-    Object.values(articles).forEach(async a => {
-      if (a.category === `${parentName} > ${oldSub}`) {
-        await setDoc(doc(db,'articles',a.id), {...a, category: `${parentName} > ${trimmed}`}, {merge:true})
+    setCategories(cats => {
+      const cloned = cats.map(cloneCatNode)
+      let nodes = cloned
+      for (let i = 0; i < parts.length - 1; i++) {
+        const node = nodes.find(n => n.name === parts[i])
+        if (!node) return cloned
+        nodes = node.subcategories
       }
+      const leaf = nodes.find(n => n.name === parts[parts.length - 1])
+      if (leaf) leaf.name = trimmed
+      return cloned
     })
-    setCategories(cats => cats.map((c,i) =>
-      i === catIdx
-        ? { ...c, subcategories: c.subcategories.map((s,si) => si === subIdx ? trimmed : s) }
-        : c
-    ))
   }
 
   const toggleCat = key => setCollapsedCats(p => ({...p, [key]: !p[key]}))
@@ -1128,35 +1093,40 @@ export default function WikiApp() {
             background:'#f0eeea',borderRight:'1px solid #ccc9c0',
             overflowY:'auto',padding:'0.6rem 0',display:'flex',flexDirection:'column',
           }}>
-            <div style={{flex:1}}>
-              {catTree.map((cat, catIdx) => {
-                const catCollapsed = !!collapsedCats[cat.name]
-                const isEditingCatName = editingCat?.type==='cat' && editingCat.catIdx===catIdx
-                const isCatDropTarget = dragArticle && dragOverCat === cat.name
-                const isCatBeingDragged = dragCatIdx === catIdx
-                const isCatDragOver = dragOverCatIdx === catIdx && dragCatIdx !== null && dragCatIdx !== catIdx
+            {/* Campaign tabs */}
+            <div style={{padding:'6px 8px 4px',borderBottom:'1px solid #ccc9c0'}}>
+              <div style={{fontSize:'0.56rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#aaa',marginBottom:4}}>Campaign</div>
+              {CAMPAIGNS.map(c=>(
+                <button key={c.id} onClick={()=>setActiveCampaign(c.id)}
+                  style={{display:'block',width:'100%',padding:'4px 8px',marginBottom:2,border:'none',borderRadius:3,
+                    cursor:'pointer',textAlign:'left',fontSize:'0.78rem',
+                    fontFamily:"'Source Serif 4',Georgia,serif",transition:'background 0.15s',
+                    background:activeCampaign===c.id?'#1b4f72':'transparent',
+                    color:activeCampaign===c.id?'#fff':'#555'}}>
+                  {activeCampaign===c.id&&<span style={{marginRight:4}}>▶</span>}{c.label}
+                </button>
+              ))}
+            </div>
 
+            <div style={{flex:1}}>
+              {(() => {
+                // Article row renderer (shared across all depths)
                 const renderArticle = (a, indent, targetCat) => {
                   const isActive = currentId===a.id&&!creating
                   const editingUsers = Object.values(online).filter(u=>u.articleId===a.id&&u.editing)
                   const isDropTarget = dragArticle && dragOverArticle === a.id
                   return (
-                    <div key={a.id}
-                      draggable
-                      onDragStart={e=>onArticleDragStart(e, a.id, targetCat)}
-                      onDragEnd={onArticleDragEnd}
-                      onDragOver={e=>onArticleDragOver(e, a.id)}
-                      onDrop={e=>onDropOnArticle(e, a.id, targetCat)}
+                    <div key={a.id} draggable
+                      onDragStart={e=>onArticleDragStart(e,a.id,targetCat)} onDragEnd={onArticleDragEnd}
+                      onDragOver={e=>onArticleDragOver(e,a.id)} onDrop={e=>onDropOnArticle(e,a.id,targetCat)}
                       onClick={()=>navTo(a.id)}
                       style={{padding:`3px 10px 3px ${indent}px`,cursor:'grab',fontSize:'0.84rem',lineHeight:1.45,
                         display:'flex',alignItems:'center',gap:4,userSelect:'none',
                         background:isDropTarget?'#d4e8f0':isActive?'#e2dfd8':'transparent',
-                        color:isActive?'#1b4f72':'#222',
-                        fontWeight:isActive?600:400,
+                        color:isActive?'#1b4f72':'#222', fontWeight:isActive?600:400,
                         borderLeft:isDropTarget?'3px solid #1b9bc8':isActive?'3px solid #1b4f72':'3px solid transparent',
                         borderTop:isDropTarget?'2px solid #1b9bc8':'none',
-                        opacity:dragArticle?.id===a.id?0.4:1,
-                        transition:'background 0.1s,border-color 0.1s'}}>
+                        opacity:dragArticle?.id===a.id?0.4:1, transition:'background 0.1s,border-color 0.1s'}}>
                       <span style={{color:'#ccc',fontSize:'0.65rem',cursor:'grab',flexShrink:0,marginRight:2}}>⠿</span>
                       <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</span>
                       {editingUsers.length>0&&<span style={{width:7,height:7,borderRadius:'50%',background:'#f5a623',flexShrink:0}}/>}
@@ -1164,108 +1134,77 @@ export default function WikiApp() {
                   )
                 }
 
-                return (
-                  <div key={cat.name}
-                    style={{marginBottom:'0.15rem',opacity:isCatBeingDragged?0.4:1,
-                      borderTop:isCatDragOver?'2px solid #1b4f72':'2px solid transparent',
-                      transition:'border-color 0.1s'}}
-                    onDragOver={e=>onCatHeaderDragOver(e, catIdx)}
-                    onDrop={e=>onCatHeaderDrop(e, catIdx)}>
-
-                    {/* Category header */}
-                    <div
-                      onDragOver={e=>onCatDragOver(e, cat.name)}
-                      onDrop={e=>onDropOnCategory(e, cat.name)}
-                      style={{display:'flex',alignItems:'center',padding:'5px 6px 2px 8px',gap:2,
-                        background:isCatDropTarget?'#ddeeff':'transparent',
-                        borderRadius:isCatDropTarget?3:0,transition:'background 0.1s'}}>
-                      {/* Category drag handle */}
-                      <span
-                        draggable
-                        onDragStart={e=>onCatHeaderDragStart(e,catIdx)}
-                        onDragEnd={onCatHeaderDragEnd}
-                        title='Drag to reorder category'
-                        style={{color:'#ccc',fontSize:'0.65rem',cursor:'grab',flexShrink:0,padding:'0 2px',userSelect:'none'}}>⠿</span>
-                      <button onClick={()=>toggleCat(cat.name)} title={catCollapsed?'Expand':'Collapse'}
-                        style={{background:'none',border:'none',cursor:'pointer',color:'#aaa',fontSize:'0.58rem',padding:'0 2px',lineHeight:1,flexShrink:0}}>
-                        {catCollapsed?'▶':'▼'}
-                      </button>
-                      {isEditingCatName
-                        ? <input autoFocus value={editingCat.value}
-                            onChange={e=>setEditingCat(p=>({...p,value:e.target.value}))}
-                            onBlur={()=>{ renameCategory(catIdx, editingCat.value); setEditingCat(null) }}
-                            onKeyDown={e=>{ if(e.key==='Enter'){renameCategory(catIdx,editingCat.value);setEditingCat(null)} if(e.key==='Escape')setEditingCat(null) }}
-                            style={{flex:1,fontSize:'0.63rem',fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',padding:'1px 4px',border:'1px solid #1b4f72',borderRadius:2,background:'#fff',color:'#222',minWidth:0}}/>
-                        : <span style={{fontSize:'0.63rem',textTransform:'uppercase',letterSpacing:'0.08em',color:'#888',fontWeight:700,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{cat.name}</span>
-                      }
-                      {!isEditingCatName && <button onClick={()=>setEditingCat({type:'cat',catIdx,value:cat.name})} title='Rename category'
-                        style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.6rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>✎</button>}
-                      <button onClick={()=>setNewSubInput(newSubInput===catIdx?null:catIdx)} title='Add subcategory'
-                        style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.72rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>⊕</button>
-                    </div>
-
-                    {newSubInput===catIdx && (
-                      <div style={{display:'flex',gap:3,padding:'3px 8px 3px 22px'}}>
-                        <input autoFocus placeholder='Subcategory name…'
-                          onKeyDown={e=>{
-                            if(e.key==='Enter'){ addSubcategory(catIdx,e.target.value); setNewSubInput(null) }
-                            if(e.key==='Escape') setNewSubInput(null)
-                          }}
-                          style={{flex:1,padding:'2px 5px',border:'1px solid #ccc9c0',borderRadius:3,fontSize:'0.75rem',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f8f7f4',color:'#222',minWidth:0}}/>
-                        <button onClick={e=>{ const inp=e.target.previousSibling; addSubcategory(catIdx,inp.value); setNewSubInput(null) }}
-                          style={{padding:'2px 6px',border:'none',borderRadius:3,background:'#1b4f72',color:'#fff',cursor:'pointer',fontSize:'0.72rem'}}>+</button>
+                // Recursive category node renderer
+                const renderCatNode = (node, parentPath, depth, catIdx) => {
+                  const path = parentPath ? `${parentPath} > ${node.name}` : node.name
+                  const collapsed = !!collapsedCats[path]
+                  const isDropTarget = dragArticle && dragOverCat === path
+                  const isEditing = editingCat?.path === path
+                  const isAddingChild = newSubInput === path
+                  const hPad = 8 + depth * 14
+                  const artIndent = 22 + depth * 14
+                  const fz = Math.max(0.57, 0.63 - depth * 0.02) + 'rem'
+                  return (
+                    <div key={path}>
+                      <div onDragOver={e=>onCatDragOver(e,path)} onDrop={e=>onDropOnCategory(e,path)}
+                        style={{display:'flex',alignItems:'center',padding:`${depth?3:5}px 6px 2px ${hPad}px`,gap:2,
+                          background:isDropTarget?'#ddeeff':'transparent',borderRadius:isDropTarget?3:0,transition:'background 0.1s'}}>
+                        {depth===0&&(
+                          <span draggable onDragStart={e=>onCatHeaderDragStart(e,catIdx)} onDragEnd={onCatHeaderDragEnd}
+                            title='Drag to reorder' style={{color:'#ccc',fontSize:'0.65rem',cursor:'grab',flexShrink:0,padding:'0 2px',userSelect:'none'}}>⠿</span>
+                        )}
+                        <button onClick={()=>toggleCat(path)}
+                          style={{background:'none',border:'none',cursor:'pointer',color:'#aaa',fontSize:'0.55rem',padding:'0 2px',lineHeight:1,flexShrink:0}}>
+                          {collapsed?'▶':'▼'}
+                        </button>
+                        {isEditing
+                          ? <input autoFocus value={editingCat.value}
+                              onChange={e=>setEditingCat(p=>({...p,value:e.target.value}))}
+                              onBlur={()=>{renameCategoryByPath(path,editingCat.value);setEditingCat(null)}}
+                              onKeyDown={e=>{if(e.key==='Enter'){renameCategoryByPath(path,editingCat.value);setEditingCat(null)}if(e.key==='Escape')setEditingCat(null)}}
+                              style={{flex:1,fontSize:fz,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',padding:'1px 4px',border:'1px solid #1b4f72',borderRadius:2,background:'#fff',color:'#222',minWidth:0}}/>
+                          : <span style={{fontSize:fz,textTransform:'uppercase',letterSpacing:'0.08em',color:depth?'#999':'#888',fontWeight:700,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                              {depth>0&&'↳ '}{node.name}
+                            </span>
+                        }
+                        {!isEditing&&<button onClick={()=>setEditingCat({path,value:node.name})} title='Rename'
+                          style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.58rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>✎</button>}
+                        <button onClick={()=>setNewSubInput(isAddingChild?null:path)} title='Add subcategory'
+                          style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.72rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>⊕</button>
                       </div>
-                    )}
+                      {isAddingChild&&(
+                        <div style={{display:'flex',gap:3,padding:`3px 8px 3px ${artIndent}px`}}>
+                          <input autoFocus placeholder='Subcategory name…'
+                            onKeyDown={e=>{if(e.key==='Enter'&&e.target.value.trim()){addSubcategoryByPath(path,e.target.value);setNewSubInput(null)}if(e.key==='Escape')setNewSubInput(null)}}
+                            style={{flex:1,padding:'2px 5px',border:'1px solid #ccc9c0',borderRadius:3,fontSize:'0.75rem',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f8f7f4',color:'#222',minWidth:0}}/>
+                          <button onClick={e=>{const inp=e.target.previousSibling;if(inp.value.trim()){addSubcategoryByPath(path,inp.value);setNewSubInput(null)}}}
+                            style={{padding:'2px 6px',border:'none',borderRadius:3,background:'#1b4f72',color:'#fff',cursor:'pointer',fontSize:'0.72rem'}}>+</button>
+                        </div>
+                      )}
+                      {!collapsed&&(
+                        <>
+                          {(byCategory[path]||[]).map(a=>renderArticle(a,artIndent,path))}
+                          {!byCategory[path]?.length&&!node.subcategories?.length&&!isDropTarget&&
+                            <div style={{fontSize:'0.78rem',color:'#aaa',padding:`2px 12px 2px ${artIndent}px`,fontStyle:'italic'}}>—</div>}
+                          {node.subcategories?.map(sub=>renderCatNode(sub,path,depth+1,catIdx))}
+                        </>
+                      )}
+                    </div>
+                  )
+                }
 
-                    {!catCollapsed && (
-                      <>
-                        {byCategory[cat.name]?.length===0 && cat.subcategories.length===0 && !isCatDropTarget &&
-                          <div style={{fontSize:'0.78rem',color:'#aaa',padding:'2px 12px 2px 28px',fontStyle:'italic'}}>—</div>}
-                        {byCategory[cat.name]?.map(a => renderArticle(a, 28, cat.name))}
-
-                        {cat.subcategories.map((sub, subIdx) => {
-                          const subKey = cat.name + ' > ' + sub
-                          const subCollapsed = !!collapsedCats[subKey]
-                          const isEditingSub = editingCat?.type==='sub' && editingCat.catIdx===catIdx && editingCat.subIdx===subIdx
-                          const isSubDropTarget = dragArticle && dragOverCat === subKey
-                          return (
-                            <div key={subKey}>
-                              <div
-                                onDragOver={e=>onCatDragOver(e, subKey)}
-                                onDrop={e=>onDropOnCategory(e, subKey)}
-                                style={{display:'flex',alignItems:'center',padding:'3px 6px 2px 22px',gap:2,
-                                  background:isSubDropTarget?'#ddeeff':'transparent',
-                                  borderRadius:isSubDropTarget?3:0,transition:'background 0.1s'}}>
-                                <button onClick={()=>toggleCat(subKey)}
-                                  style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.55rem',padding:'0 2px',lineHeight:1,flexShrink:0}}>
-                                  {subCollapsed?'▶':'▼'}
-                                </button>
-                                {isEditingSub
-                                  ? <input autoFocus value={editingCat.value}
-                                      onChange={e=>setEditingCat(p=>({...p,value:e.target.value}))}
-                                      onBlur={()=>{ renameSubcategory(catIdx,subIdx,editingCat.value); setEditingCat(null) }}
-                                      onKeyDown={e=>{ if(e.key==='Enter'){renameSubcategory(catIdx,subIdx,editingCat.value);setEditingCat(null)} if(e.key==='Escape')setEditingCat(null) }}
-                                      style={{flex:1,fontSize:'0.6rem',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.07em',padding:'1px 4px',border:'1px solid #1b4f72',borderRadius:2,background:'#fff',color:'#222',minWidth:0}}/>
-                                  : <span style={{fontSize:'0.6rem',textTransform:'uppercase',letterSpacing:'0.07em',color:'#999',fontWeight:600,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>↳ {sub}</span>
-                                }
-                                {!isEditingSub && <button onClick={()=>setEditingCat({type:'sub',catIdx,subIdx,value:sub})} title='Rename subcategory'
-                                  style={{background:'none',border:'none',cursor:'pointer',color:'#ccc',fontSize:'0.58rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>✎</button>}
-                              </div>
-                              {!subCollapsed && (
-                                <>
-                                  {byCategory[subKey]?.length===0 && !isSubDropTarget &&
-                                    <div style={{fontSize:'0.78rem',color:'#aaa',padding:'2px 12px 2px 34px',fontStyle:'italic'}}>—</div>}
-                                  {byCategory[subKey]?.map(a => renderArticle(a, 34, subKey))}
-                                </>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </>
-                    )}
-                  </div>
-                )
-              })}
+                return catTree.map((cat,catIdx)=>{
+                  const isCatBeingDragged = dragCatIdx===catIdx
+                  const isCatDragOver = dragOverCatIdx===catIdx&&dragCatIdx!==null&&dragCatIdx!==catIdx
+                  return (
+                    <div key={cat.name}
+                      style={{marginBottom:'0.15rem',opacity:isCatBeingDragged?0.4:1,borderTop:isCatDragOver?'2px solid #1b4f72':'2px solid transparent',transition:'border-color 0.1s'}}
+                      onDragOver={e=>onCatHeaderDragOver(e,catIdx)} onDrop={e=>onCatHeaderDrop(e,catIdx)}>
+                      {renderCatNode(cat,'',0,catIdx)}
+                    </div>
+                  )
+                })
+              })()}
             </div>
             {/* New top-level category */}
             <div style={{borderTop:'1px solid #ccc9c0',padding:'6px 8px'}}>
@@ -1303,9 +1242,9 @@ export default function WikiApp() {
           {articlesLoaded && Object.keys(articles).length===0 && !creating && (
             <SeedButton onSeed={()=>{}}/>
           )}
-          {creating&&<EditForm draft={newArt} setDraft={setNewArt} onSave={saveNew} onCancel={()=>setCreating(false)} isNew categories={allFlatCategories}/>}
+          {creating&&<EditForm draft={newArt} setDraft={setNewArt} onSave={saveNew} onCancel={()=>setCreating(false)} isNew categories={allFlatCategories} activeCampaign={activeCampaign}/>}
           {!creating&&editing&&editDraft&&(
-            <EditForm draft={editDraft} setDraft={setEditDraft} onSave={saveEdit} onCancel={()=>{setEditing(false);setEditDraft(null)}} onDelete={()=>deleteArticle(editDraft.id)} categories={allFlatCategories}/>
+            <EditForm draft={editDraft} setDraft={setEditDraft} onSave={saveEdit} onCancel={()=>{setEditing(false);setEditDraft(null)}} onDelete={()=>deleteArticle(editDraft.id)} categories={allFlatCategories} activeCampaign={activeCampaign}/>
           )}
           {!creating&&!editing&&article&&(
             <ArticleView article={article} onlineUsers={online} articles={articles} onNavigate={navTo}
