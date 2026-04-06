@@ -30,6 +30,41 @@ const CAMPAIGNS = [
   { id: 'sky-pirates',  label: 'Sky Pirates of Qærn' },
 ]
 
+const CAMPAIGN_THEMES = {
+  default: {
+    bg:        '#f8f7f4',
+    bgAlt:     '#f0eeea',
+    bgInput:   '#f0eeea',
+    bgInbox:   '#eeecea',
+    bgDrop:    '#d4e8f0',
+    border:    '#ccc9c0',
+    borderSoft:'#e8e5e0',
+    accent:    '#1b4f72',
+    accentFg:  '#fff',
+    accentHover:'#1b9bc8',
+    text:      '#222',
+    textMuted: '#888',
+    textFaint: '#aaa',
+    grain:     null,
+  },
+  'sky-pirates': {
+    bg:        '#1e1208',
+    bgAlt:     '#2c1a0c',
+    bgInput:   '#3d2210',
+    bgInbox:   '#3a2515',
+    bgDrop:    '#5a3810',
+    border:    '#7a5230',
+    borderSoft:'#5a3a1a',
+    accent:    '#c8960c',
+    accentFg:  '#1a0c04',
+    accentHover:'#e0aa20',
+    text:      '#f0ddb0',
+    textMuted: '#b08060',
+    textFaint: '#806040',
+    grain:     `repeating-linear-gradient(90deg,rgba(200,150,60,0.05) 0px,rgba(200,150,60,0.05) 1px,transparent 1px,transparent 24px),repeating-linear-gradient(180deg,rgba(0,0,0,0.18) 0px,rgba(0,0,0,0.18) 1px,transparent 1px,transparent 48px)`,
+  },
+}
+
 // Recursively flatten tree to all fully-qualified path strings
 function flattenCategories(cats, prefix = '') {
   const result = []
@@ -315,7 +350,7 @@ function PortraitSlideshow({ urls, alt, onOpenLightbox, onIndexChange }) {
   )
 }
 
-function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavigate }) {
+function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavigate, theme = CAMPAIGN_THEMES.default }) {
   const portraitUrls = (article.portrait||'').split(',').map(s=>s.trim()).filter(Boolean)
   const hasInfo = (article.infobox && Object.keys(article.infobox).length > 0) || portraitUrls.length > 0
   const readers = Object.entries(onlineUsers).filter(([,u])=>u.articleId===article.id&&!u.editing)
@@ -339,7 +374,7 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
   }
 
   return (
-    <div style={{maxWidth:780}}>
+    <div style={{maxWidth:780,color:theme.text}}>
       {/* Lightbox */}
       {lightbox && (
         <div onClick={()=>setLightbox(false)}
@@ -355,27 +390,27 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
           </div>
         </div>
       )}
-      <div style={{borderBottom:'1px solid #ccc9c0',marginBottom:'1rem',paddingBottom:'0.5rem'}}>
-        <div style={{fontSize:'0.66rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#666',marginBottom:2}}>{article.category}</div>
-        <h1 style={{fontFamily:"'IM Fell English',serif",fontSize:isMobile?'1.5rem':'1.95rem',color:'#1a1a1a',lineHeight:1.15}}>{article.title}</h1>
-        {article.subtitle&&<div style={{fontStyle:'italic',color:'#666',marginTop:3,fontSize:'0.92rem'}}>{article.subtitle}</div>}
+      <div style={{borderBottom:`1px solid ${theme.border}`,marginBottom:'1rem',paddingBottom:'0.5rem'}}>
+        <div style={{fontSize:'0.66rem',textTransform:'uppercase',letterSpacing:'0.1em',color:theme.textMuted,marginBottom:2}}>{article.category}</div>
+        <h1 style={{fontFamily:"'IM Fell English',serif",fontSize:isMobile?'1.5rem':'1.95rem',color:theme.text,lineHeight:1.15}}>{article.title}</h1>
+        {article.subtitle&&<div style={{fontStyle:'italic',color:theme.textMuted,marginTop:3,fontSize:'0.92rem'}}>{article.subtitle}</div>}
         {editors.length>0&&(
           <div style={{marginTop:6,padding:'4px 10px',background:'#fff9e6',border:'1px solid #f5e0a0',borderRadius:4,fontSize:'0.78rem',color:'#a07020',display:'inline-flex',alignItems:'center',gap:6}}>
             ✏ {editors.map(([,u])=>u.displayName).join(', ')} {editors.length===1?'is':'are'} editing this article
           </div>
         )}
         <div style={{marginTop:'0.6rem',display:'flex',gap:6,alignItems:'center'}}>
-          {onEdit&&<button onClick={onEdit} style={{padding:'4px 12px',border:'1px solid #ccc9c0',borderRadius:3,background:'#eeecea',cursor:'pointer',fontSize:'0.81rem',fontFamily:"'Source Serif 4',Georgia,serif",color:'#222'}}>✏ Edit</button>}
+          {onEdit&&<button onClick={onEdit} style={{padding:'4px 12px',border:`1px solid ${theme.border}`,borderRadius:3,background:theme.bgInbox,cursor:'pointer',fontSize:'0.81rem',fontFamily:"'Source Serif 4',Georgia,serif",color:theme.text}}>✏ Edit</button>}
           {onDelete&&<button onClick={onDelete} style={{padding:'4px 12px',border:'1px solid #e0b0b0',borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.81rem',fontFamily:"'Source Serif 4',Georgia,serif",color:'#b44'}}>🗑 Delete</button>}
-          {readers.length>0&&<span style={{fontSize:'0.78rem',color:'#888',marginLeft:4}}>👁 {readers.map(([,u])=>u.displayName).join(', ')} reading</span>}
+          {readers.length>0&&<span style={{fontSize:'0.78rem',color:theme.textMuted,marginLeft:4}}>👁 {readers.map(([,u])=>u.displayName).join(', ')} reading</span>}
         </div>
       </div>
       {hasInfo&&(
         <div style={isMobile
-          ? {width:'100%',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
-          : {float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:'#eeecea',border:'1px solid #ccc9c0',borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
+          ? {width:'100%',marginBottom:'1rem',background:theme.bgInbox,border:`1px solid ${theme.border}`,borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
+          : {float:'right',width:244,marginLeft:'1.5rem',marginBottom:'1rem',background:theme.bgInbox,border:`1px solid ${theme.border}`,borderRadius:4,padding:'0.7rem',fontSize:'0.82rem'}
         }>
-          <div style={{fontFamily:"'IM Fell English',serif",fontWeight:600,fontSize:'0.88rem',marginBottom:6,borderBottom:'1px solid #ccc9c0',paddingBottom:4,color:'#1b4f72'}}>{article.title}</div>
+          <div style={{fontFamily:"'IM Fell English',serif",fontWeight:600,fontSize:'0.88rem',marginBottom:6,borderBottom:`1px solid ${theme.border}`,paddingBottom:4,color:theme.accent}}>{article.title}</div>
           {/* Portrait */}
           <div style={{textAlign:'center',marginBottom:8}}>
             {portraitUrls.length > 0
@@ -390,16 +425,20 @@ function ArticleView({ article, onEdit, onDelete, onlineUsers, articles, onNavig
           </div>
           {Object.entries(article.infobox).map(([k,v])=>(
             <div key={k} style={{display:'flex',gap:6,marginBottom:4,lineHeight:1.4}}>
-              <span style={{color:'#666',minWidth:82,fontSize:'0.72rem',textTransform:'uppercase',letterSpacing:'0.04em',paddingTop:1,flexShrink:0}}>{k}</span>
-              <span style={{flex:1,fontSize:'0.82rem'}}>{v}</span>
+              <span style={{color:theme.textMuted,minWidth:82,fontSize:'0.72rem',textTransform:'uppercase',letterSpacing:'0.04em',paddingTop:1,flexShrink:0}}>{k}</span>
+              <span style={{flex:1,fontSize:'0.82rem',color:theme.text}}>{v}</span>
             </div>
           ))}
         </div>
       )}
-      <div className='article-body' style={{fontSize:'0.91rem'}} onClick={handleBodyClick} dangerouslySetInnerHTML={{__html:linkedContent}}/>
+      <div className='article-body' onClick={handleBodyClick} dangerouslySetInnerHTML={{__html:linkedContent}}
+        style={{fontSize:'0.91rem',color:theme.text,
+          '--ab-border':theme.border,'--ab-accent':theme.accent,'--ab-muted':theme.textMuted,
+          '--ab-bg-code':theme.bgInput,'--ab-bg-quote':theme.bgInbox,'--ab-bg-th':theme.bgInbox,
+          '--ab-link':theme.accent,'--ab-heading':theme.text}}/>
       <div style={{clear:'both'}}/>
       {article.updatedAt&&(
-        <div style={{marginTop:'1.5rem',paddingTop:'0.75rem',borderTop:'1px solid #e8e5e0',fontSize:'0.76rem',color:'#aaa'}}>
+        <div style={{marginTop:'1.5rem',paddingTop:'0.75rem',borderTop:`1px solid ${theme.borderSoft}`,fontSize:'0.76rem',color:theme.textFaint}}>
           Last edited {new Date(article.updatedAt.seconds*1000).toLocaleString()} {article.updatedBy&&`by ${article.updatedBy}`}
         </div>
       )}
@@ -1014,65 +1053,68 @@ export default function WikiApp() {
 
   const closeSidebarOnMobile = () => { if (isMobile) setSidebarOpen(false) }
 
+  const theme = CAMPAIGN_THEMES[activeCampaign] || CAMPAIGN_THEMES.default
+  const grainedBg  = (base) => theme.grain ? `${theme.grain}, ${base}` : base
+
   return (
-    <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f8f7f4',color:'#222'}}>
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden',fontFamily:"'Source Serif 4',Georgia,serif",background:theme.bg,color:theme.text,transition:'background 0.3s,color 0.3s'}}>
       {/* Header */}
-      <header style={{background:'#f8f7f4',borderBottom:'1px solid #ccc9c0',padding:'0 0.75rem',display:'flex',alignItems:'center',gap:'0.5rem',height:50,flexShrink:0}}>
-        <button onClick={()=>setSidebarOpen(s=>!s)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:'1.1rem',padding:'4px 6px',flexShrink:0}}>☰</button>
-        <span onClick={()=>{setCurrentId(null);setEditing(false);setCreating(false)}} style={{fontFamily:"'IM Fell English',serif",fontSize:'1.3rem',color:'#1b4f72',flexShrink:0,cursor:'pointer'}} title='Return to home'>Qærn</span>
-        {!isMobile && <span style={{fontSize:'0.67rem',color:'#888',textTransform:'uppercase',letterSpacing:'0.1em'}}>The Living Wiki</span>}
+      <header style={{background:grainedBg(theme.bgAlt),borderBottom:`1px solid ${theme.border}`,padding:'0 0.75rem',display:'flex',alignItems:'center',gap:'0.5rem',height:50,flexShrink:0}}>
+        <button onClick={()=>setSidebarOpen(s=>!s)} style={{background:'none',border:'none',cursor:'pointer',color:theme.textMuted,fontSize:'1.1rem',padding:'4px 6px',flexShrink:0}}>☰</button>
+        <span onClick={()=>{setCurrentId(null);setEditing(false);setCreating(false)}} style={{fontFamily:"'IM Fell English',serif",fontSize:'1.3rem',color:theme.accent,flexShrink:0,cursor:'pointer'}} title='Return to home'>Qærn</span>
+        {!isMobile && <span style={{fontSize:'0.67rem',color:theme.textMuted,textTransform:'uppercase',letterSpacing:'0.1em'}}>The Living Wiki</span>}
         <div style={{flex:1}}/>
         {!isMobile && <PresenceBubbles online={online} currentUser={user}/>}
         {!isMobile && (
           <input placeholder='Search…' value={search} onChange={e=>setSearch(e.target.value)}
-            style={{padding:'4px 10px',border:'1px solid #ccc9c0',borderRadius:3,fontSize:'0.82rem',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f0eeea',color:'#222',width:160}}/>
+            style={{padding:'4px 10px',border:`1px solid ${theme.border}`,borderRadius:3,fontSize:'0.82rem',fontFamily:"'Source Serif 4',Georgia,serif",background:theme.bgInput,color:theme.text,width:160}}/>
         )}
         {!isMobile && (
           <button onClick={()=>setShowChangelog(s=>!s)}
-            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📋 Changelog</button>
+            style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>📋 Changelog</button>
         )}
         {!isMobile && (
           <button onClick={()=>{ setShowTracker(true); history.replaceState(null,'','#tracker') }}
-            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📊 Tracker</button>
+            style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>📊 Tracker</button>
         )}
         {!isMobile && (
           <button onClick={()=>{ setShowBulletin(true); history.replaceState(null,'','#bulletin') }}
-            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>📋 Bulletin</button>
+            style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>📋 Bulletin</button>
         )}
         {!isMobile && (
           <button onClick={()=>{ setShowInitiative(true); history.replaceState(null,'','#initiative') }}
-            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>⚔ Initiative</button>
+            style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>⚔ Initiative</button>
         )}
         {!isMobile && (
           <button onClick={()=>{ setShowHexMap(true); history.replaceState(null,'','#map') }}
-            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>🗺 Map</button>
+            style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>🗺 Map</button>
         )}
         {!isMobile && (
           <button onClick={()=>{ setShowDowntime(true); history.replaceState(null,'','#downtime') }}
-            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>🌙 Downtime</button>
+            style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>🌙 Downtime</button>
         )}
         {!isMobile && (
           <button onClick={()=>{ setShowChat(true); history.replaceState(null,'','#forum') }}
-            style={{padding:'5px 10px',borderRadius:3,border:'1px solid #ccc9c0',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:'#f0eeea',color:'#555',flexShrink:0}}>💬 Forum</button>
+            style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>💬 Forum</button>
         )}
         {!isMobile && (
           <button onClick={()=>{setCreating(true);setEditing(false)}}
-            style={{padding:'5px 14px',borderRadius:3,border:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.83rem',background:'#1b4f72',color:'#fff',flexShrink:0}}>+ New Article</button>
+            style={{padding:'5px 14px',borderRadius:3,border:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.83rem',background:theme.accent,color:theme.accentFg,flexShrink:0}}>+ New Article</button>
         )}
-        <div style={{display:'flex',alignItems:'center',gap:isMobile?4:6,borderLeft:'1px solid #ccc9c0',paddingLeft:isMobile?'0.5rem':'0.75rem',marginLeft:isMobile?0:4}}>
+        <div style={{display:'flex',alignItems:'center',gap:isMobile?4:6,borderLeft:`1px solid ${theme.border}`,paddingLeft:isMobile?'0.5rem':'0.75rem',marginLeft:isMobile?0:4}}>
           <div onClick={()=>setShowSettings(true)}
             style={{width:28,height:28,borderRadius:'50%',background:effectiveColor,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'0.68rem',fontWeight:700,color:'#fff',flexShrink:0,cursor:'pointer',title:'Settings'}}>{initials(user.displayName||user.email)}</div>
-          {!isMobile && <span style={{fontSize:'0.8rem',color:'#555',maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.displayName||user.email}</span>}
-          {!isMobile && <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',fontSize:'0.85rem',color:'#aaa',padding:'0 2px'}} title='Settings'>⚙</button>}
-          <button onClick={logout} style={{padding:'3px 8px',border:'1px solid #ccc9c0',borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.75rem',color:'#888'}}>Sign out</button>
+          {!isMobile && <span style={{fontSize:'0.8rem',color:theme.textMuted,maxWidth:100,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.displayName||user.email}</span>}
+          {!isMobile && <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',fontSize:'0.85rem',color:theme.textFaint,padding:'0 2px'}} title='Settings'>⚙</button>}
+          <button onClick={logout} style={{padding:'3px 8px',border:`1px solid ${theme.border}`,borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.75rem',color:theme.textMuted}}>Sign out</button>
         </div>
       </header>
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div style={{padding:'6px 10px',borderBottom:'1px solid #e8e5e0',background:'#f8f7f4',display:'flex',gap:6}}>
+        <div style={{padding:'6px 10px',borderBottom:`1px solid ${theme.borderSoft}`,background:grainedBg(theme.bg),display:'flex',gap:6}}>
           <input placeholder='Search articles…' value={search} onChange={e=>setSearch(e.target.value)}
-            style={{flex:1,padding:'6px 10px',border:'1px solid #ccc9c0',borderRadius:4,fontSize:'0.88rem',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f0eeea',color:'#222'}}/>
+            style={{flex:1,padding:'6px 10px',border:`1px solid ${theme.border}`,borderRadius:4,fontSize:'0.88rem',fontFamily:"'Source Serif 4',Georgia,serif",background:theme.bgInput,color:theme.text}}/>
         </div>
       )}
 
@@ -1086,23 +1128,23 @@ export default function WikiApp() {
           <aside style={{
             ...(isMobile ? {
               position:'absolute',top:0,left:0,bottom:0,zIndex:51,
-              width:'80vw',maxWidth:300,boxShadow:'4px 0 20px rgba(0,0,0,0.15)',
+              width:'80vw',maxWidth:300,boxShadow:'4px 0 20px rgba(0,0,0,0.25)',
             } : {
               width:230,flexShrink:0,
             }),
-            background:'#f0eeea',borderRight:'1px solid #ccc9c0',
+            background:grainedBg(theme.bgAlt),borderRight:`1px solid ${theme.border}`,
             overflowY:'auto',padding:'0.6rem 0',display:'flex',flexDirection:'column',
           }}>
             {/* Campaign tabs */}
-            <div style={{padding:'6px 8px 4px',borderBottom:'1px solid #ccc9c0'}}>
-              <div style={{fontSize:'0.56rem',textTransform:'uppercase',letterSpacing:'0.1em',color:'#aaa',marginBottom:4}}>Campaign</div>
+            <div style={{padding:'6px 8px 4px',borderBottom:`1px solid ${theme.border}`}}>
+              <div style={{fontSize:'0.56rem',textTransform:'uppercase',letterSpacing:'0.1em',color:theme.textFaint,marginBottom:4}}>Campaign</div>
               {CAMPAIGNS.map(c=>(
                 <button key={c.id} onClick={()=>setActiveCampaign(c.id)}
                   style={{display:'block',width:'100%',padding:'4px 8px',marginBottom:2,border:'none',borderRadius:3,
                     cursor:'pointer',textAlign:'left',fontSize:'0.78rem',
                     fontFamily:"'Source Serif 4',Georgia,serif",transition:'background 0.15s',
-                    background:activeCampaign===c.id?'#1b4f72':'transparent',
-                    color:activeCampaign===c.id?'#fff':'#555'}}>
+                    background:activeCampaign===c.id?theme.accent:'transparent',
+                    color:activeCampaign===c.id?theme.accentFg:theme.textMuted}}>
                   {activeCampaign===c.id&&<span style={{marginRight:4}}>▶</span>}{c.label}
                 </button>
               ))}
@@ -1122,12 +1164,12 @@ export default function WikiApp() {
                       onClick={()=>navTo(a.id)}
                       style={{padding:`3px 10px 3px ${indent}px`,cursor:'grab',fontSize:'0.84rem',lineHeight:1.45,
                         display:'flex',alignItems:'center',gap:4,userSelect:'none',
-                        background:isDropTarget?'#d4e8f0':isActive?'#e2dfd8':'transparent',
-                        color:isActive?'#1b4f72':'#222', fontWeight:isActive?600:400,
-                        borderLeft:isDropTarget?'3px solid #1b9bc8':isActive?'3px solid #1b4f72':'3px solid transparent',
-                        borderTop:isDropTarget?'2px solid #1b9bc8':'none',
+                        background:isDropTarget?theme.bgDrop:isActive?theme.bgInput:'transparent',
+                        color:isActive?theme.accent:theme.text, fontWeight:isActive?600:400,
+                        borderLeft:isDropTarget?`3px solid ${theme.accentHover}`:isActive?`3px solid ${theme.accent}`:'3px solid transparent',
+                        borderTop:isDropTarget?`2px solid ${theme.accentHover}`:'none',
                         opacity:dragArticle?.id===a.id?0.4:1, transition:'background 0.1s,border-color 0.1s'}}>
-                      <span style={{color:'#ccc',fontSize:'0.65rem',cursor:'grab',flexShrink:0,marginRight:2}}>⠿</span>
+                      <span style={{color:theme.textFaint,fontSize:'0.65rem',cursor:'grab',flexShrink:0,marginRight:2}}>⠿</span>
                       <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{a.title}</span>
                       {editingUsers.length>0&&<span style={{width:7,height:7,borderRadius:'50%',background:'#f5a623',flexShrink:0}}/>}
                     </div>
@@ -1148,13 +1190,13 @@ export default function WikiApp() {
                     <div key={path}>
                       <div onDragOver={e=>onCatDragOver(e,path)} onDrop={e=>onDropOnCategory(e,path)}
                         style={{display:'flex',alignItems:'center',padding:`${depth?3:5}px 6px 2px ${hPad}px`,gap:2,
-                          background:isDropTarget?'#ddeeff':'transparent',borderRadius:isDropTarget?3:0,transition:'background 0.1s'}}>
+                          background:isDropTarget?theme.bgDrop:'transparent',borderRadius:isDropTarget?3:0,transition:'background 0.1s'}}>
                         {depth===0&&(
                           <span draggable onDragStart={e=>onCatHeaderDragStart(e,catIdx)} onDragEnd={onCatHeaderDragEnd}
-                            title='Drag to reorder' style={{color:'#ccc',fontSize:'0.65rem',cursor:'grab',flexShrink:0,padding:'0 2px',userSelect:'none'}}>⠿</span>
+                            title='Drag to reorder' style={{color:theme.textFaint,fontSize:'0.65rem',cursor:'grab',flexShrink:0,padding:'0 2px',userSelect:'none'}}>⠿</span>
                         )}
                         <button onClick={()=>toggleCat(path)}
-                          style={{background:'none',border:'none',cursor:'pointer',color:'#aaa',fontSize:'0.55rem',padding:'0 2px',lineHeight:1,flexShrink:0}}>
+                          style={{background:'none',border:'none',cursor:'pointer',color:theme.textFaint,fontSize:'0.55rem',padding:'0 2px',lineHeight:1,flexShrink:0}}>
                           {collapsed?'▶':'▼'}
                         </button>
                         {isEditing
@@ -1162,30 +1204,30 @@ export default function WikiApp() {
                               onChange={e=>setEditingCat(p=>({...p,value:e.target.value}))}
                               onBlur={()=>{renameCategoryByPath(path,editingCat.value);setEditingCat(null)}}
                               onKeyDown={e=>{if(e.key==='Enter'){renameCategoryByPath(path,editingCat.value);setEditingCat(null)}if(e.key==='Escape')setEditingCat(null)}}
-                              style={{flex:1,fontSize:fz,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',padding:'1px 4px',border:'1px solid #1b4f72',borderRadius:2,background:'#fff',color:'#222',minWidth:0}}/>
-                          : <span style={{fontSize:fz,textTransform:'uppercase',letterSpacing:'0.08em',color:depth?'#999':'#888',fontWeight:700,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                              style={{flex:1,fontSize:fz,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',padding:'1px 4px',border:`1px solid ${theme.accent}`,borderRadius:2,background:theme.bgInput,color:theme.text,minWidth:0}}/>
+                          : <span style={{fontSize:fz,textTransform:'uppercase',letterSpacing:'0.08em',color:theme.textMuted,fontWeight:700,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                               {depth>0&&'↳ '}{node.name}
                             </span>
                         }
                         {!isEditing&&<button onClick={()=>setEditingCat({path,value:node.name})} title='Rename'
-                          style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.58rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>✎</button>}
+                          style={{background:'none',border:'none',cursor:'pointer',color:theme.textFaint,fontSize:'0.58rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>✎</button>}
                         <button onClick={()=>setNewSubInput(isAddingChild?null:path)} title='Add subcategory'
-                          style={{background:'none',border:'none',cursor:'pointer',color:'#bbb',fontSize:'0.72rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>⊕</button>
+                          style={{background:'none',border:'none',cursor:'pointer',color:theme.textFaint,fontSize:'0.72rem',padding:'0 1px',lineHeight:1,flexShrink:0,opacity:0.7}}>⊕</button>
                       </div>
                       {isAddingChild&&(
                         <div style={{display:'flex',gap:3,padding:`3px 8px 3px ${artIndent}px`}}>
                           <input autoFocus placeholder='Subcategory name…'
                             onKeyDown={e=>{if(e.key==='Enter'&&e.target.value.trim()){addSubcategoryByPath(path,e.target.value);setNewSubInput(null)}if(e.key==='Escape')setNewSubInput(null)}}
-                            style={{flex:1,padding:'2px 5px',border:'1px solid #ccc9c0',borderRadius:3,fontSize:'0.75rem',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f8f7f4',color:'#222',minWidth:0}}/>
+                            style={{flex:1,padding:'2px 5px',border:`1px solid ${theme.border}`,borderRadius:3,fontSize:'0.75rem',fontFamily:"'Source Serif 4',Georgia,serif",background:theme.bgInput,color:theme.text,minWidth:0}}/>
                           <button onClick={e=>{const inp=e.target.previousSibling;if(inp.value.trim()){addSubcategoryByPath(path,inp.value);setNewSubInput(null)}}}
-                            style={{padding:'2px 6px',border:'none',borderRadius:3,background:'#1b4f72',color:'#fff',cursor:'pointer',fontSize:'0.72rem'}}>+</button>
+                            style={{padding:'2px 6px',border:'none',borderRadius:3,background:theme.accent,color:theme.accentFg,cursor:'pointer',fontSize:'0.72rem'}}>+</button>
                         </div>
                       )}
                       {!collapsed&&(
                         <>
                           {(byCategory[path]||[]).map(a=>renderArticle(a,artIndent,path))}
                           {!byCategory[path]?.length&&!node.subcategories?.length&&!isDropTarget&&
-                            <div style={{fontSize:'0.78rem',color:'#aaa',padding:`2px 12px 2px ${artIndent}px`,fontStyle:'italic'}}>—</div>}
+                            <div style={{fontSize:'0.78rem',color:theme.textFaint,padding:`2px 12px 2px ${artIndent}px`,fontStyle:'italic'}}>—</div>}
                           {node.subcategories?.map(sub=>renderCatNode(sub,path,depth+1,catIdx))}
                         </>
                       )}
@@ -1198,7 +1240,7 @@ export default function WikiApp() {
                   const isCatDragOver = dragOverCatIdx===catIdx&&dragCatIdx!==null&&dragCatIdx!==catIdx
                   return (
                     <div key={cat.name}
-                      style={{marginBottom:'0.15rem',opacity:isCatBeingDragged?0.4:1,borderTop:isCatDragOver?'2px solid #1b4f72':'2px solid transparent',transition:'border-color 0.1s'}}
+                      style={{marginBottom:'0.15rem',opacity:isCatBeingDragged?0.4:1,borderTop:isCatDragOver?`2px solid ${theme.accent}`:'2px solid transparent',transition:'border-color 0.1s'}}
                       onDragOver={e=>onCatHeaderDragOver(e,catIdx)} onDrop={e=>onCatHeaderDrop(e,catIdx)}>
                       {renderCatNode(cat,'',0,catIdx)}
                     </div>
@@ -1207,30 +1249,30 @@ export default function WikiApp() {
               })()}
             </div>
             {/* New top-level category */}
-            <div style={{borderTop:'1px solid #ccc9c0',padding:'6px 8px'}}>
+            <div style={{borderTop:`1px solid ${theme.border}`,padding:'6px 8px'}}>
               {showNewCatInput
                 ? <div style={{display:'flex',gap:4}}>
                     <input autoFocus value={newCatInput} onChange={e=>setNewCatInput(e.target.value)}
                       onKeyDown={e=>{if(e.key==='Enter')addCategory();if(e.key==='Escape'){setShowNewCatInput(false);setNewCatInput('')}}}
                       placeholder='Category name…'
-                      style={{flex:1,padding:'3px 6px',border:'1px solid #ccc9c0',borderRadius:3,fontSize:'0.78rem',fontFamily:"'Source Serif 4',Georgia,serif",background:'#f8f7f4',color:'#222',minWidth:0}}/>
-                    <button onClick={addCategory} style={{padding:'3px 7px',border:'none',borderRadius:3,background:'#1b4f72',color:'#fff',cursor:'pointer',fontSize:'0.75rem'}}>+</button>
-                    <button onClick={()=>{setShowNewCatInput(false);setNewCatInput('')}} style={{padding:'3px 6px',border:'1px solid #ccc9c0',borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.75rem',color:'#888'}}>✕</button>
+                      style={{flex:1,padding:'3px 6px',border:`1px solid ${theme.border}`,borderRadius:3,fontSize:'0.78rem',fontFamily:"'Source Serif 4',Georgia,serif",background:theme.bgInput,color:theme.text,minWidth:0}}/>
+                    <button onClick={addCategory} style={{padding:'3px 7px',border:'none',borderRadius:3,background:theme.accent,color:theme.accentFg,cursor:'pointer',fontSize:'0.75rem'}}>+</button>
+                    <button onClick={()=>{setShowNewCatInput(false);setNewCatInput('')}} style={{padding:'3px 6px',border:`1px solid ${theme.border}`,borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.75rem',color:theme.textMuted}}>✕</button>
                   </div>
                 : <button onClick={()=>setShowNewCatInput(true)}
-                    style={{width:'100%',padding:'4px 8px',border:'1px dashed #ccc9c0',borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.75rem',color:'#888',textAlign:'left',fontFamily:"'Source Serif 4',Georgia,serif"}}>
+                    style={{width:'100%',padding:'4px 8px',border:`1px dashed ${theme.border}`,borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.75rem',color:theme.textMuted,textAlign:'left',fontFamily:"'Source Serif 4',Georgia,serif"}}>
                     + New Category
                   </button>
               }
             </div>
             {/* Sidebar action buttons */}
-            <div style={{borderTop:'1px solid #ccc9c0',padding:'6px 8px',display:'flex',flexDirection:'column',gap:4}}>
+            <div style={{borderTop:`1px solid ${theme.border}`,padding:'6px 8px',display:'flex',flexDirection:'column',gap:4}}>
               <button onClick={()=>{setCreating(true);setEditing(false);if(isMobile)setSidebarOpen(false)}}
-                style={{width:'100%',padding:'6px 8px',border:'none',borderRadius:3,background:'#1b4f72',color:'#fff',cursor:'pointer',fontSize:'0.8rem',fontFamily:"'Source Serif 4',Georgia,serif",textAlign:'left'}}>
+                style={{width:'100%',padding:'6px 8px',border:'none',borderRadius:3,background:theme.accent,color:theme.accentFg,cursor:'pointer',fontSize:'0.8rem',fontFamily:"'Source Serif 4',Georgia,serif",textAlign:'left'}}>
                 ✍ New Article
               </button>
               <button onClick={()=>setShowChangelog(s=>!s)}
-                style={{width:'100%',padding:'5px 8px',border:'1px solid #ccc9c0',borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.78rem',fontFamily:"'Source Serif 4',Georgia,serif",color:'#666',textAlign:'left'}}>
+                style={{width:'100%',padding:'5px 8px',border:`1px solid ${theme.border}`,borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.78rem',fontFamily:"'Source Serif 4',Georgia,serif",color:theme.textMuted,textAlign:'left'}}>
                 📋 Changelog
               </button>
             </div>
@@ -1238,7 +1280,7 @@ export default function WikiApp() {
         )}
 
         {/* Main */}
-        <main style={{flex:1,overflowY:'auto',padding:isMobile?'1rem':'1.5rem 2rem'}}>
+        <main style={{flex:1,overflowY:'auto',padding:isMobile?'1rem':'1.5rem 2rem',background:grainedBg(theme.bg)}}>
           {articlesLoaded && Object.keys(articles).length===0 && !creating && (
             <SeedButton onSeed={()=>{}}/>
           )}
@@ -1249,7 +1291,7 @@ export default function WikiApp() {
           {!creating&&!editing&&article&&(
             <ArticleView article={article} onlineUsers={online} articles={articles} onNavigate={navTo}
               onEdit={()=>{setEditDraft(JSON.parse(JSON.stringify(article)));setEditing(true)}}
-              onDelete={()=>deleteArticle(article.id)}/>
+              onDelete={()=>deleteArticle(article.id)} theme={theme}/>
           )}
           {!creating&&!editing&&!article&&articlesLoaded&&Object.keys(articles).length>0&&(
             <div style={{position:'relative',minHeight:'100%',background:'#000',overflow:'hidden',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'flex-start'}}>

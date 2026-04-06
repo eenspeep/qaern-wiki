@@ -31,22 +31,23 @@ STYLE.textContent = `
   [contenteditable] a { color: #1a5276; }
   [contenteditable] figure { margin: 1rem 0; text-align: center; }
   [contenteditable] figcaption { font-style: italic; font-size: 0.82rem; color: #666; margin-top: 4px; }
-  .article-body h2 { font-family: 'IM Fell English', serif; font-size: 1.15rem; margin: 1.4rem 0 0.4rem; border-bottom: 1px solid #ccc9c0; padding-bottom: 3px; color: #1a1a1a; }
-  .article-body h3 { font-family: 'IM Fell English', serif; font-size: 1.02rem; margin: 1rem 0 0.3rem; }
-  .article-body h4 { font-family: 'IM Fell English', serif; font-size: 0.93rem; margin: 0.8rem 0 0.25rem; }
+  .article-body { --ab-border: #ccc9c0; --ab-accent: #1b4f72; --ab-muted: #666; --ab-bg-code: #f0eeea; --ab-bg-quote: #f4f1ec; --ab-bg-th: #eeecea; --ab-link: #1a5276; --ab-heading: #1a1a1a; }
+  .article-body h2 { font-family: 'IM Fell English', serif; font-size: 1.15rem; margin: 1.4rem 0 0.4rem; border-bottom: 1px solid var(--ab-border); padding-bottom: 3px; color: var(--ab-heading); }
+  .article-body h3 { font-family: 'IM Fell English', serif; font-size: 1.02rem; margin: 1rem 0 0.3rem; color: var(--ab-heading); }
+  .article-body h4 { font-family: 'IM Fell English', serif; font-size: 0.93rem; margin: 0.8rem 0 0.25rem; color: var(--ab-heading); }
   .article-body p { margin: 0.3rem 0; line-height: 1.75; }
-  .article-body blockquote { border-left: 3px solid #1b4f72; padding: 0.4rem 1rem; margin: 0.8rem 0; color: #666; font-style: italic; background: #f4f1ec; }
-  .article-body pre { background: #f0eeea; border: 1px solid #ccc9c0; border-radius: 3px; padding: 0.6rem 0.8rem; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; }
-  .article-body hr { border: none; border-top: 1px solid #ccc9c0; margin: 1rem 0; }
+  .article-body blockquote { border-left: 3px solid var(--ab-accent); padding: 0.4rem 1rem; margin: 0.8rem 0; color: var(--ab-muted); font-style: italic; background: var(--ab-bg-quote); }
+  .article-body pre { background: var(--ab-bg-code); border: 1px solid var(--ab-border); border-radius: 3px; padding: 0.6rem 0.8rem; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; }
+  .article-body hr { border: none; border-top: 1px solid var(--ab-border); margin: 1rem 0; }
   .article-body ul, .article-body ol { padding-left: 1.4rem; margin: 0.4rem 0; }
   .article-body li { margin: 0.2rem 0; line-height: 1.7; }
   .article-body table { border-collapse: collapse; width: 100%; margin: 0.8rem 0; font-size: 0.88rem; }
-  .article-body td, .article-body th { border: 1px solid #ccc9c0; padding: 5px 9px; }
-  .article-body th { background: #eeecea; font-family: 'IM Fell English', serif; }
-  .article-body img { max-width: 100%; height: auto; border: 1px solid #ccc9c0; border-radius: 3px; }
+  .article-body td, .article-body th { border: 1px solid var(--ab-border); padding: 5px 9px; }
+  .article-body th { background: var(--ab-bg-th); font-family: 'IM Fell English', serif; }
+  .article-body img { max-width: 100%; height: auto; border: 1px solid var(--ab-border); border-radius: 3px; }
   .article-body figure { margin: 1rem 0; text-align: center; }
-  .article-body figcaption { font-style: italic; font-size: 0.82rem; color: #666; margin-top: 4px; }
-  .article-body a { color: #1a5276; }
+  .article-body figcaption { font-style: italic; font-size: 0.82rem; color: var(--ab-muted); margin-top: 4px; }
+  .article-body a { color: var(--ab-link); }
   ::-webkit-scrollbar { width: 5px; }
   ::-webkit-scrollbar-thumb { background: #ccc9c0; border-radius: 3px; }
   @keyframes orbit1 { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
