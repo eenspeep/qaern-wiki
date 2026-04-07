@@ -82,21 +82,14 @@ function FullscreenViewer({ item, onClose }) {
 
 // ─── Document card ────────────────────────────────────────────────────────────
 function DocCard({ item, admin, onDelete, onEdit }) {
-  const [expanded, setExpanded] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
-  const isMobile = useIsMobile()
 
   return (
     <>
       {fullscreen && <FullscreenViewer item={item} onClose={() => setFullscreen(false)}/>}
       <div style={{ border: '1px solid #ccc9c0', borderRadius: 5, overflow: 'hidden', marginBottom: '0.6rem', background: '#faf9f6', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        {/* Header row */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.5rem 0.85rem', background: expanded ? '#f0eeea' : '#faf9f6', borderBottom: expanded ? '1px solid #ccc9c0' : 'none', transition: 'background 0.12s' }}>
-          <button type='button' onClick={() => setExpanded(e => !e)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.65rem', color: '#aaa', flexShrink: 0, padding: '0 2px', lineHeight: 1 }}>
-            {expanded ? '▼' : '▶'}
-          </button>
-          <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setExpanded(e => !e)}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.55rem 0.85rem' }}>
+          <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setFullscreen(true)}>
             <div style={{ fontFamily: "'IM Fell English',serif", fontSize: '1rem', color: '#1a1a1a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {item.title}
             </div>
@@ -106,12 +99,10 @@ function DocCard({ item, admin, onDelete, onEdit }) {
               </div>
             )}
           </div>
-          {expanded && (
-            <button type='button' onClick={() => setFullscreen(true)} title='Fullscreen'
-              style={{ background: 'none', border: '1px solid #ccc9c0', cursor: 'pointer', fontSize: '0.82rem', color: '#888', padding: '2px 7px', borderRadius: 3, flexShrink: 0 }}>
-              ⛶
-            </button>
-          )}
+          <button type='button' onClick={() => setFullscreen(true)} title='Open document'
+            style={{ background: 'none', border: '1px solid #ccc9c0', cursor: 'pointer', fontSize: '0.82rem', color: '#888', padding: '2px 7px', borderRadius: 3, flexShrink: 0 }}>
+            ⛶
+          </button>
           {admin && (
             <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
               <button type='button' onClick={() => onEdit(item)}
@@ -121,19 +112,6 @@ function DocCard({ item, admin, onDelete, onEdit }) {
             </div>
           )}
         </div>
-        {/* Expanded: iframe */}
-        {expanded && (
-          <div>
-            <div style={{ position: 'relative', width: '100%', paddingBottom: isMobile ? '140%' : '72%', background: '#222' }}>
-              <iframe src={item.url} title={item.title} allow="autoplay"
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none' }}/>
-            </div>
-            <div style={{ padding: '4px 10px 5px', background: '#f0eeea', fontSize: '0.7rem', textAlign: 'right' }}>
-              <a href={item.url.replace('/preview', '/view')} target='_blank' rel='noreferrer'
-                style={{ color: '#1b4f72', textDecoration: 'none' }}>Open in Google Drive ↗</a>
-            </div>
-          </div>
-        )}
       </div>
     </>
   )
