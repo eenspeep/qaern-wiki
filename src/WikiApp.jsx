@@ -14,6 +14,7 @@ import HexMap from './HexMap'
 import InitiativeTracker from './InitiativeTracker'
 import Downtime from './Downtime'
 import Chat from './Chat'
+import Documents from './Documents'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 // Category tree: each node is { name: string, subcategories: CategoryNode[] }
@@ -786,6 +787,9 @@ export default function WikiApp() {
   const [showHexMap, setShowHexMap] = useState(false)
   const [showDowntime, setShowDowntime] = useState(false)
   const [showChat, setShowChat] = useState(false)
+  const [showDocuments, setShowDocuments] = useState(false)
+  const [showMore, setShowMore] = useState(false)
+  const moreRef = useRef(null)
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
   const [collapsedCats, setCollapsedCats] = useState({})
   const [newCatInput, setNewCatInput] = useState('')
@@ -804,6 +808,14 @@ export default function WikiApp() {
   const [userColor, setUserColor] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
   const online = usePresence(user, currentId, editing)
+
+  // Close More dropdown on outside click
+  useEffect(() => {
+    if (!showMore) return
+    const handler = e => { if (moreRef.current && !moreRef.current.contains(e.target)) setShowMore(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showMore])
 
   // Load user's custom color from Firestore
   useEffect(() => {
@@ -1097,6 +1109,23 @@ export default function WikiApp() {
           <button onClick={()=>{ setShowChat(true); history.replaceState(null,'','#forum') }}
             style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>💬 Forum</button>
         )}
+        {/* More dropdown */}
+        {!isMobile && (
+          <div ref={moreRef} style={{position:'relative',flexShrink:0}}>
+            <button onClick={()=>setShowMore(s=>!s)}
+              style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:showMore?theme.bgAlt:theme.bgInput,color:theme.textMuted}}>
+              More {showMore?'▲':'▼'}
+            </button>
+            {showMore&&(
+              <div style={{position:'absolute',top:'calc(100% + 4px)',right:0,background:theme.bgAlt,border:`1px solid ${theme.border}`,borderRadius:4,boxShadow:'0 4px 16px rgba(0,0,0,0.12)',zIndex:100,minWidth:160,overflow:'hidden'}}>
+                <button onClick={()=>{setShowDocuments(true);setShowMore(false);history.replaceState(null,'','#documents')}}
+                  style={{display:'block',width:'100%',padding:'8px 14px',border:'none',background:'none',cursor:'pointer',textAlign:'left',fontSize:'0.82rem',fontFamily:"'Source Serif 4',Georgia,serif",color:theme.text}}>
+                  📄 Documents
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {!isMobile && (
           <button onClick={()=>{setCreating(true);setEditing(false)}}
             style={{padding:'5px 14px',borderRadius:3,border:'none',cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.83rem',background:theme.accent,color:theme.accentFg,flexShrink:0}}>+ New Article</button>
@@ -1275,6 +1304,10 @@ export default function WikiApp() {
                 style={{width:'100%',padding:'5px 8px',border:`1px solid ${theme.border}`,borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.78rem',fontFamily:"'Source Serif 4',Georgia,serif",color:theme.textMuted,textAlign:'left'}}>
                 📋 Changelog
               </button>
+              <button onClick={()=>{setShowDocuments(true);if(isMobile)setSidebarOpen(false)}}
+                style={{width:'100%',padding:'5px 8px',border:`1px solid ${theme.border}`,borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.78rem',fontFamily:"'Source Serif 4',Georgia,serif",color:theme.textMuted,textAlign:'left'}}>
+                📄 Documents
+              </button>
             </div>
           </aside>
         )}
@@ -1369,6 +1402,7 @@ export default function WikiApp() {
       {showHexMap     && <HexMap          user={user} onClose={()=>{ setShowHexMap(false);     history.replaceState(null,'',window.location.pathname) }}/>}
       {showDowntime   && <Downtime        user={user} onClose={()=>{ setShowDowntime(false);   history.replaceState(null,'',window.location.pathname) }}/>}
       {showChat       && <Chat            user={user} onClose={()=>{ setShowChat(false);       history.replaceState(null,'',window.location.pathname) }}/>}
+      {showDocuments  && <Documents       user={user} onClose={()=>{ setShowDocuments(false);  history.replaceState(null,'',window.location.pathname) }}/>}
 
       {showSettings && <UserSettings user={user} updateUser={updateUser} currentColor={effectiveColor} onClose={()=>setShowSettings(false)}/>}
 
