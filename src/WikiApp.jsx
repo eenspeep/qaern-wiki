@@ -1097,10 +1097,6 @@ export default function WikiApp() {
           <button onClick={()=>{ setShowDowntime(true); history.replaceState(null,'','#downtime') }}
             style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>🌙 Downtime</button>
         )}
-        {!isMobile && (
-          <button onClick={()=>{ setShowChat(true); history.replaceState(null,'','#forum') }}
-            style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>💬 Forum</button>
-        )}
         {/* More dropdown */}
         {!isMobile && (
           <div ref={moreRef} style={{position:'relative',flexShrink:0}}>
@@ -1112,6 +1108,7 @@ export default function WikiApp() {
               <div style={{position:'absolute',top:'calc(100% + 4px)',right:0,background:theme.bgAlt,border:`1px solid ${theme.border}`,borderRadius:4,boxShadow:'0 4px 16px rgba(0,0,0,0.12)',zIndex:100,minWidth:160,overflow:'hidden'}}>
                 {[
                   {label:'🗺 Map',       action:()=>{setShowHexMap(true);    history.replaceState(null,'','#map')}},
+                  {label:'💬 Forum',     action:()=>{setShowChat(true);      history.replaceState(null,'','#forum')}},
                   {label:'📋 Changelog', action:()=>setShowChangelog(s=>!s)},
                   {label:'📄 Documents', action:()=>{setShowDocuments(true); history.replaceState(null,'','#documents')}},
                 ].map(({label,action})=>(
