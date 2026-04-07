@@ -74,6 +74,11 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.token.name == 'speep';
     }
+    // Documents category tree: same permissions as documents
+    match /documents_meta/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.token.name == 'speep';
+    }
     // User profiles: users can read all, write only their own
     match /users/{userId} {
       allow read: if request.auth != null;
