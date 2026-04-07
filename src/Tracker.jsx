@@ -25,6 +25,31 @@ function makePaletteFor(p) {
   return PALETTES[p] || PALETTES[0]
 }
 
+// Sort items within a group: level items first (by currentLevel desc, then pct desc),
+// then bars (by fill% desc), then clocks (by fill% desc).
+function sortItems(items) {
+  const levelPct = it => {
+    const cl = it.currentLevel ?? 0
+    const lv = it.levels?.[cl]
+    return lv && lv.max > 0 ? lv.current / lv.max : 0
+  }
+  const barFill  = it => it.max > 0 ? it.current / it.max : 0
+  const clockFill = it => it.segments > 0 ? it.filled / it.segments : 0
+
+  const levels = [...items.filter(it => it.type === 'level')]
+    .sort((a, b) => {
+      const la = a.currentLevel ?? 0, lb = b.currentLevel ?? 0
+      if (la !== lb) return lb - la
+      return levelPct(b) - levelPct(a)
+    })
+  const bars   = [...items.filter(it => it.type === 'bar')]
+    .sort((a, b) => barFill(b) - barFill(a))
+  const clocks = [...items.filter(it => it.type === 'clock')]
+    .sort((a, b) => clockFill(b) - clockFill(a))
+  const others = items.filter(it => !['level', 'bar', 'clock'].includes(it.type))
+  return [...levels, ...bars, ...clocks, ...others]
+}
+
 // ─── Clock SVG ────────────────────────────────────────────────────────────────
 function Clock({ segments, filled, palette, size = 90, editable, onToggle }) {
   const cx = size / 2, cy = size / 2, r = size / 2 - 4
@@ -637,18 +662,13 @@ export default function Tracker({ user, onClose }) {
     updateTab(tabId, t => ({ ...t, groups: t.groups.map(g => g.id === groupId ? { ...g, items: [...g.items, newItem] } : g) }))
   }
 
-  const barPct = (it) => it.max > 0 ? it.current / it.max : 0
-
   const updateItem = (tabId, groupId, itemId, newItem) => {
     updateTab(tabId, t => ({
       ...t,
       groups: t.groups.map(g => {
         if (g.id !== groupId) return g
         const updated = g.items.map(it => it.id === itemId ? newItem : it)
-        // Bars sort by fill % desc; non-bar items stay after bars in original order
-        const bars = updated.filter(it => it.type === 'bar').sort((a, b) => barPct(b) - barPct(a))
-        const nonBars = updated.filter(it => it.type !== 'bar')
-        return { ...g, items: [...bars, ...nonBars] }
+        return { ...g, items: sortItems(updated) }
       })
     }))
   }
@@ -878,7 +898,7 @@ export default function Tracker({ user, onClose }) {
                           {admin ? 'Empty — drag items here or add below.' : 'Nothing here yet.'}
                         </div>
                       )}
-                      {group.items.map(item => (
+                      {sortItems(group.items).map(item => (
                         <div key={item.id}
                           draggable={admin}
                           onDragStart={admin ? e => onItemDragStart(e, item.id) : undefined}
