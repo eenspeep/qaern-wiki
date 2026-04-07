@@ -1082,10 +1082,6 @@ export default function WikiApp() {
             style={{padding:'4px 10px',border:`1px solid ${theme.border}`,borderRadius:3,fontSize:'0.82rem',fontFamily:"'Source Serif 4',Georgia,serif",background:theme.bgInput,color:theme.text,width:160}}/>
         )}
         {!isMobile && (
-          <button onClick={()=>setShowChangelog(s=>!s)}
-            style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>📋 Changelog</button>
-        )}
-        {!isMobile && (
           <button onClick={()=>{ setShowTracker(true); history.replaceState(null,'','#tracker') }}
             style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>📊 Tracker</button>
         )}
@@ -1096,10 +1092,6 @@ export default function WikiApp() {
         {!isMobile && (
           <button onClick={()=>{ setShowInitiative(true); history.replaceState(null,'','#initiative') }}
             style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>⚔ Initiative</button>
-        )}
-        {!isMobile && (
-          <button onClick={()=>{ setShowHexMap(true); history.replaceState(null,'','#map') }}
-            style={{padding:'5px 10px',borderRadius:3,border:`1px solid ${theme.border}`,cursor:'pointer',fontFamily:"'Source Serif 4',Georgia,serif",fontSize:'0.8rem',background:theme.bgInput,color:theme.textMuted,flexShrink:0}}>🗺 Map</button>
         )}
         {!isMobile && (
           <button onClick={()=>{ setShowDowntime(true); history.replaceState(null,'','#downtime') }}
@@ -1118,10 +1110,16 @@ export default function WikiApp() {
             </button>
             {showMore&&(
               <div style={{position:'absolute',top:'calc(100% + 4px)',right:0,background:theme.bgAlt,border:`1px solid ${theme.border}`,borderRadius:4,boxShadow:'0 4px 16px rgba(0,0,0,0.12)',zIndex:100,minWidth:160,overflow:'hidden'}}>
-                <button onClick={()=>{setShowDocuments(true);setShowMore(false);history.replaceState(null,'','#documents')}}
-                  style={{display:'block',width:'100%',padding:'8px 14px',border:'none',background:'none',cursor:'pointer',textAlign:'left',fontSize:'0.82rem',fontFamily:"'Source Serif 4',Georgia,serif",color:theme.text}}>
-                  📄 Documents
-                </button>
+                {[
+                  {label:'🗺 Map',       action:()=>{setShowHexMap(true);    history.replaceState(null,'','#map')}},
+                  {label:'📋 Changelog', action:()=>setShowChangelog(s=>!s)},
+                  {label:'📄 Documents', action:()=>{setShowDocuments(true); history.replaceState(null,'','#documents')}},
+                ].map(({label,action})=>(
+                  <button key={label} onClick={()=>{action();setShowMore(false)}}
+                    style={{display:'block',width:'100%',padding:'8px 14px',border:'none',background:'none',cursor:'pointer',textAlign:'left',fontSize:'0.82rem',fontFamily:"'Source Serif 4',Georgia,serif",color:theme.text}}>
+                    {label}
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -1299,10 +1297,6 @@ export default function WikiApp() {
               <button onClick={()=>{setCreating(true);setEditing(false);if(isMobile)setSidebarOpen(false)}}
                 style={{width:'100%',padding:'6px 8px',border:'none',borderRadius:3,background:theme.accent,color:theme.accentFg,cursor:'pointer',fontSize:'0.8rem',fontFamily:"'Source Serif 4',Georgia,serif",textAlign:'left'}}>
                 ✍ New Article
-              </button>
-              <button onClick={()=>setShowChangelog(s=>!s)}
-                style={{width:'100%',padding:'5px 8px',border:`1px solid ${theme.border}`,borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.78rem',fontFamily:"'Source Serif 4',Georgia,serif",color:theme.textMuted,textAlign:'left'}}>
-                📋 Changelog
               </button>
               <button onClick={()=>{setShowDocuments(true);if(isMobile)setSidebarOpen(false)}}
                 style={{width:'100%',padding:'5px 8px',border:`1px solid ${theme.border}`,borderRadius:3,background:'none',cursor:'pointer',fontSize:'0.78rem',fontFamily:"'Source Serif 4',Georgia,serif",color:theme.textMuted,textAlign:'left'}}>
