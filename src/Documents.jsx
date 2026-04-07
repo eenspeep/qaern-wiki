@@ -7,7 +7,9 @@ import { db } from './firebase'
 
 const ADMIN = 'speep'
 const isAdmin = u => u?.displayName === ADMIN
-const BLANK = { title: '', description: '', url: '', category: '' }
+const BLANK = { title: '', description: '', url: '', category: '', gmOnly: false }
+const GM_HASH = btoa('Mnemovex') // trivial obfuscation; this is a casual lock not a security boundary
+const checkGmPassword = pw => btoa(pw) === GM_HASH
 
 function toEmbedUrl(raw) {
   const m = raw.match(/\/file\/d\/([^/?&#\s]+)/)
@@ -80,17 +82,62 @@ function FullscreenViewer({ item, onClose }) {
   )
 }
 
+// ─── GM password modal ───────────────────────────────────────────────────────
+function GmPasswordModal({ onUnlock, onCancel }) {
+  const [value, setValue] = useState('')
+  const [error, setError] = useState(false)
+
+  const submit = () => {
+    if (checkGmPassword(value)) { onUnlock() }
+    else { setError(true); setValue('') }
+  }
+
+  useEffect(() => {
+    const h = e => { if (e.key === 'Escape') onCancel() }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+  }, [onCancel])
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ background: '#f8f7f4', border: '1px solid #ccc9c0', borderRadius: 6, padding: '1.5rem', width: 300, fontFamily: "'Source Serif 4',Georgia,serif", boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+        <div style={{ fontFamily: "'IM Fell English',serif", fontSize: '1.1rem', color: '#1a1a1a', marginBottom: '0.4rem' }}>🔒 GM Only</div>
+        <div style={{ fontSize: '0.84rem', color: '#666', marginBottom: '1rem', lineHeight: 1.5 }}>This document is restricted to the GM. Enter the password to view it.</div>
+        <input autoFocus type='password' value={value}
+          onChange={e => { setValue(e.target.value); setError(false) }}
+          onKeyDown={e => { if (e.key === 'Enter') submit() }}
+          placeholder='Password…'
+          style={{ width: '100%', padding: '6px 8px', border: `1px solid ${error ? '#e0b0b0' : '#ccc9c0'}`, borderRadius: 3, fontSize: '0.88rem', fontFamily: "'Source Serif 4',Georgia,serif", background: '#fff', color: '#222', boxSizing: 'border-box' }}/>
+        {error && <div style={{ fontSize: '0.74rem', color: '#b44', marginTop: 4 }}>Incorrect password.</div>}
+        <div style={{ display: 'flex', gap: 6, marginTop: '0.9rem' }}>
+          <button type='button' onClick={submit}
+            style={{ padding: '5px 14px', border: 'none', borderRadius: 3, background: '#1b4f72', color: '#fff', cursor: 'pointer', fontSize: '0.83rem', fontFamily: "'Source Serif 4',Georgia,serif" }}>
+            Unlock
+          </button>
+          <button type='button' onClick={onCancel}
+            style={{ padding: '5px 10px', border: '1px solid #ccc9c0', borderRadius: 3, background: 'none', cursor: 'pointer', fontSize: '0.83rem', color: '#666' }}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Document card ────────────────────────────────────────────────────────────
-function DocCard({ item, admin, onDelete, onEdit }) {
-  const [fullscreen, setFullscreen] = useState(false)
+function DocCard({ item, admin, gmUnlocked, onDelete, onEdit, onGmRequest, onOpen }) {
+  const locked = item.gmOnly && !gmUnlocked
+  const open = () => locked ? onGmRequest(item) : onOpen(item)
 
   return (
     <>
-      {fullscreen && <FullscreenViewer item={item} onClose={() => setFullscreen(false)}/>}
-      <div style={{ border: '1px solid #ccc9c0', borderRadius: 5, overflow: 'hidden', marginBottom: '0.6rem', background: '#faf9f6', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+      <div style={{ border: `1px solid ${locked ? '#c8b8a8' : '#ccc9c0'}`, borderRadius: 5, overflow: 'hidden', marginBottom: '0.6rem', background: locked ? '#fdf8f4' : '#faf9f6', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.55rem 0.85rem' }}>
-          <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setFullscreen(true)}>
-            <div style={{ fontFamily: "'IM Fell English',serif", fontSize: '1rem', color: '#1a1a1a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {item.gmOnly && (
+            <span title='GM only' style={{ fontSize: '0.72rem', flexShrink: 0, opacity: locked ? 1 : 0.4 }}>🔒</span>
+          )}
+          <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={open}>
+            <div style={{ fontFamily: "'IM Fell English',serif", fontSize: '1rem', color: locked ? '#8a6a5a' : '#1a1a1a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {item.title}
             </div>
             {item.description && (
@@ -99,9 +146,9 @@ function DocCard({ item, admin, onDelete, onEdit }) {
               </div>
             )}
           </div>
-          <button type='button' onClick={() => setFullscreen(true)} title='Open document'
-            style={{ background: 'none', border: '1px solid #ccc9c0', cursor: 'pointer', fontSize: '0.82rem', color: '#888', padding: '2px 7px', borderRadius: 3, flexShrink: 0 }}>
-            ⛶
+          <button type='button' onClick={open} title={locked ? 'GM only — enter password' : 'Open document'}
+            style={{ background: 'none', border: `1px solid ${locked ? '#c8b8a8' : '#ccc9c0'}`, cursor: 'pointer', fontSize: '0.82rem', color: locked ? '#a08060' : '#888', padding: '2px 7px', borderRadius: 3, flexShrink: 0 }}>
+            {locked ? '🔒' : '⛶'}
           </button>
           {admin && (
             <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
@@ -145,6 +192,12 @@ function DocForm({ initial, allCategories, defaultCategory, onSave, onCancel }) 
           {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
+      <div style={{ marginBottom: 8 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.84rem', color: '#555' }}>
+          <input type='checkbox' checked={!!form.gmOnly} onChange={e => f('gmOnly', e.target.checked)}/>
+          🔒 GM only — require password to open
+        </label>
+      </div>
       <div style={{ marginBottom: 12 }}>
         <label style={lbl}>Google Drive URL *</label>
         <input value={form.url} onChange={e => f('url', e.target.value)} placeholder='https://drive.google.com/file/d/…/view'
@@ -177,6 +230,9 @@ export default function Documents({ user, onClose }) {
   const [showNewCatInput, setShowNewCatInput] = useState(false)
   const [adding, setAdding] = useState(false)
   const [editItem, setEditItem] = useState(null)
+  const [gmUnlocked, setGmUnlocked] = useState(false)
+  const [pendingGmDoc, setPendingGmDoc] = useState(null)
+  const [viewingDoc, setViewingDoc] = useState(null)
   const admin = isAdmin(user)
   const isMobile = useIsMobile()
 
@@ -283,7 +339,8 @@ export default function Documents({ user, onClose }) {
     await addDoc(collection(db, 'documents'), {
       title: form.title.trim(), description: form.description.trim(),
       url: toEmbedUrl(form.url.trim()), category: form.category || '',
-      order: docs.length, addedBy: user.displayName || user.email, addedAt: serverTimestamp(),
+      gmOnly: !!form.gmOnly, order: docs.length,
+      addedBy: user.displayName || user.email, addedAt: serverTimestamp(),
     })
     setAdding(false)
   }
@@ -292,6 +349,7 @@ export default function Documents({ user, onClose }) {
     await updateDoc(doc(db, 'documents', editItem.id), {
       title: form.title.trim(), description: form.description.trim(),
       url: toEmbedUrl(form.url.trim()), category: form.category || '',
+      gmOnly: !!form.gmOnly,
     })
     setEditItem(null)
   }
@@ -455,13 +513,24 @@ export default function Documents({ user, onClose }) {
 
           {/* Document cards */}
           {visibleDocs.map(item => (
-            <DocCard key={item.id} item={item} admin={admin}
+            <DocCard key={item.id} item={item} admin={admin} gmUnlocked={gmUnlocked}
               onDelete={handleDelete}
               onEdit={i => { setEditItem(i); setAdding(false) }}
+              onOpen={i => setViewingDoc(i)}
+              onGmRequest={i => setPendingGmDoc(i)}
             />
           ))}
         </div>
       </div>
+
+      {viewingDoc && <FullscreenViewer item={viewingDoc} onClose={() => setViewingDoc(null)}/>}
+
+      {pendingGmDoc && (
+        <GmPasswordModal
+          onUnlock={() => { setGmUnlocked(true); setViewingDoc(pendingGmDoc); setPendingGmDoc(null) }}
+          onCancel={() => setPendingGmDoc(null)}
+        />
+      )}
     </div>
   )
 }
