@@ -15,6 +15,7 @@ import InitiativeTracker from './InitiativeTracker'
 import Downtime from './Downtime'
 import Chat from './Chat'
 import Documents from './Documents'
+import People from './People'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 // Category tree: each node is { name: string, subcategories: CategoryNode[] }
@@ -788,6 +789,7 @@ export default function WikiApp() {
   const [showDowntime, setShowDowntime] = useState(false)
   const [showChat, setShowChat] = useState(false)
   const [showDocuments, setShowDocuments] = useState(false)
+  const [showPeople, setShowPeople] = useState(false)
   const [showMore, setShowMore] = useState(false)
   const moreRef = useRef(null)
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES)
@@ -1107,6 +1109,7 @@ export default function WikiApp() {
             {showMore&&(
               <div style={{position:'absolute',top:'calc(100% + 4px)',right:0,background:theme.bgAlt,border:`1px solid ${theme.border}`,borderRadius:4,boxShadow:'0 4px 16px rgba(0,0,0,0.12)',zIndex:100,minWidth:160,overflow:'hidden'}}>
                 {[
+                  {label:'👤 People',    action:()=>{setShowPeople(true);    history.replaceState(null,'','#people')}},
                   {label:'🗺 Map',       action:()=>{setShowHexMap(true);    history.replaceState(null,'','#map')}},
                   {label:'💬 Forum',     action:()=>{setShowChat(true);      history.replaceState(null,'','#forum')}},
                   {label:'📋 Changelog', action:()=>setShowChangelog(s=>!s)},
@@ -1394,6 +1397,7 @@ export default function WikiApp() {
       {showDowntime   && <Downtime        user={user} onClose={()=>{ setShowDowntime(false);   history.replaceState(null,'',window.location.pathname) }}/>}
       {showChat       && <Chat            user={user} onClose={()=>{ setShowChat(false);       history.replaceState(null,'',window.location.pathname) }}/>}
       {showDocuments  && <Documents       user={user} onClose={()=>{ setShowDocuments(false);  history.replaceState(null,'',window.location.pathname) }}/>}
+      {showPeople     && <People          user={user} onClose={()=>{ setShowPeople(false);     history.replaceState(null,'',window.location.pathname) }}/>}
 
       {showSettings && <UserSettings user={user} updateUser={updateUser} currentColor={effectiveColor} onClose={()=>setShowSettings(false)}/>}
 
