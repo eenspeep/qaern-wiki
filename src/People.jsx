@@ -1,13 +1,42 @@
 import { useState, useEffect } from 'react'
 import {
   collection, onSnapshot, addDoc, deleteDoc,
-  doc, serverTimestamp, updateDoc,
+  doc, serverTimestamp, updateDoc, setDoc,
 } from 'firebase/firestore'
 import { db } from './firebase'
 
 const ADMIN = 'speep'
 const isAdmin = u => u?.displayName === ADMIN
-const BLANK = { name: '', portrait: '', description: '', details: '' }
+const BLANK = { name: '', portrait: '', description: '', details: '', category: '' }
+
+// ─── Category tree helpers ────────────────────────────────────────────────────
+function flattenCategories(cats, prefix = '') {
+  const result = []
+  cats.forEach(c => {
+    const path = prefix ? `${prefix} > ${c.name}` : c.name
+    result.push(path)
+    if (c.subcategories?.length) result.push(...flattenCategories(c.subcategories, path))
+  })
+  return result
+}
+function cloneCatNode(c) {
+  return { name: c.name, subcategories: (c.subcategories || []).map(cloneCatNode) }
+}
+function insertCatPath(nodes, parts) {
+  if (!parts.length) return
+  let node = nodes.find(n => n.name === parts[0])
+  if (!node) { node = { name: parts[0], subcategories: [] }; nodes.push(node) }
+  insertCatPath(node.subcategories, parts.slice(1))
+}
+function removeCatFromTree(nodes, parts) {
+  if (parts.length === 1) {
+    const idx = nodes.findIndex(n => n.name === parts[0])
+    if (idx >= 0) nodes.splice(idx, 1)
+    return
+  }
+  const node = nodes.find(n => n.name === parts[0])
+  if (node) removeCatFromTree(node.subcategories, parts.slice(1))
+}
 
 function useIsMobile(bp = 680) {
   const [m, setM] = useState(() => window.innerWidth < bp)
@@ -115,8 +144,8 @@ function NpcCard({ person, admin, onEdit, onDelete, onLightbox }) {
 }
 
 // ─── Add / Edit form (modal) ──────────────────────────────────────────────────
-function PersonForm({ initial, onSave, onCancel }) {
-  const [form, setForm] = useState(initial ? { ...BLANK, ...initial } : BLANK)
+function PersonForm({ initial, allCategories, defaultCategory, onSave, onCancel }) {
+  const [form, setForm] = useState(initial ? { ...BLANK, ...initial } : { ...BLANK, category: defaultCategory || '' })
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const valid = form.name.trim()
   const lbl = { display: 'block', fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#888', marginBottom: 3 }
@@ -135,6 +164,13 @@ function PersonForm({ initial, onSave, onCancel }) {
         <div style={{ marginBottom: 8 }}>
           <label style={lbl}>Portrait URL</label>
           <input value={form.portrait} onChange={e => f('portrait', e.target.value)} placeholder='https://…' style={inp}/>
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <label style={lbl}>Category</label>
+          <select value={form.category} onChange={e => f('category', e.target.value)} style={inp}>
+            <option value=''>— Uncategorised —</option>
+            {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
         </div>
         <div style={{ marginBottom: 8 }}>
           <label style={lbl}>Short description <span style={{ fontWeight: 400, textTransform: 'none' }}>(shown on card)</span></label>
@@ -165,9 +201,16 @@ function PersonForm({ initial, onSave, onCancel }) {
 // ─── People page ──────────────────────────────────────────────────────────────
 export default function People({ user, onClose }) {
   const [people, setPeople] = useState([])
+  const [categories, setCategories] = useState([])
+  const [selectedCat, setSelectedCat] = useState(null)
+  const [collapsedCats, setCollapsedCats] = useState({})
+  const [editingCat, setEditingCat] = useState(null)
+  const [addingSubTo, setAddingSubTo] = useState(null)
+  const [newCatInput, setNewCatInput] = useState('')
+  const [showNewCatInput, setShowNewCatInput] = useState(false)
   const [search, setSearch] = useState('')
   const [lightboxPerson, setLightboxPerson] = useState(null)
-  const [formPerson, setFormPerson] = useState(null)   // null = closed, BLANK = new, obj = edit
+  const [formPerson, setFormPerson] = useState(null)
   const [adding, setAdding] = useState(false)
   const admin = isAdmin(user)
   const isMobile = useIsMobile()
@@ -181,16 +224,89 @@ export default function People({ user, onClose }) {
     return unsub
   }, [])
 
-  const visible = people.filter(p => {
-    if (!search) return true
-    const q = search.toLowerCase()
-    return p.name?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q) || p.details?.toLowerCase().includes(q)
-  })
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'people_meta', 'config'), snap => {
+      if (snap.exists()) setCategories(snap.data().categories || [])
+    })
+    return unsub
+  }, [])
+
+  const persistCategories = tree => {
+    setCategories(tree)
+    setDoc(doc(db, 'people_meta', 'config'), { categories: tree })
+  }
+
+  const catTree = (() => {
+    const cloned = categories.map(cloneCatNode)
+    people.forEach(p => { if (p.category) insertCatPath(cloned, p.category.split(' > ')) })
+    return cloned
+  })()
+
+  const allFlatCategories = flattenCategories(catTree)
+  const toggleCat = path => setCollapsedCats(c => ({ ...c, [path]: !c[path] }))
+
+  const addTopCategory = () => {
+    const name = newCatInput.trim()
+    if (!name) return
+    const cloned = categories.map(cloneCatNode)
+    if (!cloned.find(n => n.name === name)) cloned.push({ name, subcategories: [] })
+    persistCategories(cloned)
+    setNewCatInput(''); setShowNewCatInput(false)
+  }
+
+  const addSubcategory = (parentPath, childName) => {
+    const name = childName.trim()
+    if (!name) return
+    const cloned = categories.map(cloneCatNode)
+    let nodes = cloned
+    for (const part of parentPath.split(' > ')) {
+      let node = nodes.find(n => n.name === part)
+      if (!node) { node = { name: part, subcategories: [] }; nodes.push(node) }
+      nodes = node.subcategories
+    }
+    if (!nodes.find(n => n.name === name)) nodes.push({ name, subcategories: [] })
+    persistCategories(cloned)
+  }
+
+  const renameCategory = async (oldPath, newName) => {
+    const trimmed = newName.trim()
+    if (!trimmed) return
+    const parts = oldPath.split(' > ')
+    const newPath = [...parts.slice(0, -1), trimmed].join(' > ')
+    if (newPath === oldPath) return
+    await Promise.all(people
+      .filter(p => p.category === oldPath || p.category?.startsWith(oldPath + ' > '))
+      .map(p => updateDoc(doc(db, 'people', p.id), {
+        category: p.category === oldPath ? newPath : newPath + p.category.slice(oldPath.length),
+      }))
+    )
+    const cloned = categories.map(cloneCatNode)
+    let nodes = cloned
+    for (let i = 0; i < parts.length - 1; i++) { const n = nodes.find(n => n.name === parts[i]); if (!n) return; nodes = n.subcategories }
+    const node = nodes.find(n => n.name === parts[parts.length - 1])
+    if (node) node.name = trimmed
+    persistCategories(cloned)
+    if (selectedCat === oldPath || selectedCat?.startsWith(oldPath + ' > ')) setSelectedCat(newPath)
+  }
+
+  const deleteCategory = async path => {
+    const affected = people.filter(p => p.category === path || p.category?.startsWith(path + ' > '))
+    const msg = affected.length
+      ? `Delete "${path}"? ${affected.length} person(s) will become uncategorised.`
+      : `Delete "${path}"?`
+    if (!window.confirm(msg)) return
+    await Promise.all(affected.map(p => updateDoc(doc(db, 'people', p.id), { category: '' })))
+    const cloned = categories.map(cloneCatNode)
+    removeCatFromTree(cloned, path.split(' > '))
+    persistCategories(cloned)
+    if (selectedCat === path || selectedCat?.startsWith(path + ' > ')) setSelectedCat(null)
+  }
 
   const saveNew = async form => {
     await addDoc(collection(db, 'people'), {
       name: form.name.trim(), portrait: form.portrait.trim(),
       description: form.description.trim(), details: form.details.trim(),
+      category: form.category || '',
       addedBy: user.displayName || user.email, addedAt: serverTimestamp(),
     })
     setAdding(false)
@@ -200,6 +316,7 @@ export default function People({ user, onClose }) {
     await updateDoc(doc(db, 'people', formPerson.id), {
       name: form.name.trim(), portrait: form.portrait.trim(),
       description: form.description.trim(), details: form.details.trim(),
+      category: form.category || '',
     })
     setFormPerson(null)
   }
@@ -209,7 +326,74 @@ export default function People({ user, onClose }) {
     await deleteDoc(doc(db, 'people', id))
   }
 
+  const visible = people.filter(p => {
+    if (selectedCat && p.category !== selectedCat) return false
+    if (!search) return true
+    const q = search.toLowerCase()
+    return p.name?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q) || p.details?.toLowerCase().includes(q)
+  })
+
   const cardMin = isMobile ? 140 : 170
+
+  // ─── Recursive sidebar category renderer ─────────────────────────────────────
+  const renderCatNode = (node, parentPath, depth) => {
+    const path = parentPath ? `${parentPath} > ${node.name}` : node.name
+    const collapsed = !!collapsedCats[path]
+    const isSelected = selectedCat === path
+    const isEditing = editingCat?.path === path
+    const isAddingSub = addingSubTo === path
+    const indent = 10 + depth * 12
+
+    return (
+      <div key={path}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: `${depth ? 3 : 4}px 6px 2px ${indent}px` }}>
+          <button type='button' onClick={() => toggleCat(path)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', fontSize: '0.5rem', padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>
+            {collapsed ? '▶' : '▼'}
+          </button>
+          {isEditing
+            ? <input autoFocus value={editingCat.value}
+                onChange={e => setEditingCat(p => ({ ...p, value: e.target.value }))}
+                onBlur={() => { renameCategory(path, editingCat.value); setEditingCat(null) }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { renameCategory(path, editingCat.value); setEditingCat(null) }
+                  if (e.key === 'Escape') setEditingCat(null)
+                }}
+                style={{ flex: 1, fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', padding: '1px 4px', border: '1px solid #1b4f72', borderRadius: 2, background: '#fff', color: '#222', minWidth: 0 }}/>
+            : <button type='button' onClick={() => setSelectedCat(isSelected ? null : path)}
+                style={{ flex: 1, background: isSelected ? '#e2dfd8' : 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: '2px 4px', borderRadius: 3,
+                  fontSize: '0.63rem', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700,
+                  color: isSelected ? '#1b4f72' : depth ? '#888' : '#666' }}>
+                {depth > 0 && '↳ '}{node.name}
+              </button>
+          }
+          {admin && !isEditing && (
+            <>
+              <button type='button' onClick={() => setEditingCat({ path, value: node.name })} title='Rename'
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '0.55rem', padding: '0 1px', lineHeight: 1, flexShrink: 0, opacity: 0.8 }}>✎</button>
+              <button type='button' onClick={() => setAddingSubTo(isAddingSub ? null : path)} title='Add subcategory'
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '0.68rem', padding: '0 1px', lineHeight: 1, flexShrink: 0, opacity: 0.8 }}>⊕</button>
+              <button type='button' onClick={() => deleteCategory(path)} title='Delete'
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: '0.58rem', padding: '0 1px', lineHeight: 1, flexShrink: 0, opacity: 0.8 }}>✕</button>
+            </>
+          )}
+        </div>
+        {isAddingSub && (
+          <div style={{ display: 'flex', gap: 3, padding: `3px 8px 3px ${indent + 18}px` }}>
+            <input autoFocus placeholder='Subcategory name…'
+              onKeyDown={e => {
+                if (e.key === 'Enter' && e.target.value.trim()) { addSubcategory(path, e.target.value); setAddingSubTo(null) }
+                if (e.key === 'Escape') setAddingSubTo(null)
+              }}
+              style={{ flex: 1, padding: '2px 5px', border: '1px solid #ccc9c0', borderRadius: 3, fontSize: '0.73rem', fontFamily: "'Source Serif 4',Georgia,serif", background: '#f8f7f4', color: '#222', minWidth: 0 }}/>
+            <button type='button' onClick={e => { const inp = e.target.previousSibling; if (inp.value.trim()) { addSubcategory(path, inp.value); setAddingSubTo(null) } }}
+              style={{ padding: '2px 6px', border: 'none', borderRadius: 3, background: '#1b4f72', color: '#fff', cursor: 'pointer', fontSize: '0.72rem' }}>+</button>
+          </div>
+        )}
+        {!collapsed && node.subcategories?.map(sub => renderCatNode(sub, path, depth + 1))}
+      </div>
+    )
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 200, background: '#f8f7f4', display: 'flex', flexDirection: 'column', fontFamily: "'Source Serif 4',Georgia,serif" }}>
@@ -217,7 +401,7 @@ export default function People({ user, onClose }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 1rem', height: 50, flexShrink: 0, borderBottom: '1px solid #ccc9c0', background: '#f0eeea' }}>
         <span style={{ fontFamily: "'IM Fell English',serif", fontSize: '1.2rem', color: '#1b4f72', flexShrink: 0 }}>👤 People</span>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder='Search…'
-          style={{ flex: 1, padding: '4px 10px', border: '1px solid #ccc9c0', borderRadius: 3, fontSize: '0.84rem', fontFamily: "'Source Serif 4',Georgia,serif", background: '#f8f7f4', color: '#222', maxWidth: 320 }}/>
+          style={{ flex: 1, padding: '4px 10px', border: '1px solid #ccc9c0', borderRadius: 3, fontSize: '0.84rem', fontFamily: "'Source Serif 4',Georgia,serif", background: '#f8f7f4', color: '#222', maxWidth: 280 }}/>
         <div style={{ flex: 1 }}/>
         {admin && (
           <button type='button' onClick={() => setAdding(true)}
@@ -231,27 +415,73 @@ export default function People({ user, onClose }) {
         </button>
       </div>
 
-      {/* Card grid */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '1rem' : '1.5rem 2rem' }}>
-        {visible.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '5rem 0', color: '#aaa', fontSize: '0.9rem', fontStyle: 'italic' }}>
-            {search ? `No results for "${search}".` : `No people yet.${admin ? ' Use "+ Add Person" to add someone.' : ''}`}
+      {/* Body: sidebar + main */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+
+        {/* Sidebar */}
+        {!isMobile && (
+          <div style={{ width: 210, flexShrink: 0, borderRight: '1px solid #ccc9c0', background: '#f0eeea', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '0.4rem 0' }}>
+            <button type='button' onClick={() => setSelectedCat(null)}
+              style={{ display: 'block', width: '100%', padding: '5px 14px', border: 'none', cursor: 'pointer', textAlign: 'left', fontSize: '0.8rem', fontFamily: "'Source Serif 4',Georgia,serif",
+                background: selectedCat === null ? '#e2dfd8' : 'none', color: selectedCat === null ? '#1b4f72' : '#555', fontWeight: selectedCat === null ? 700 : 400 }}>
+              All People
+            </button>
+            <div style={{ flex: 1, marginTop: 4 }}>
+              {catTree.map(node => renderCatNode(node, '', 0))}
+            </div>
+            <div style={{ borderTop: '1px solid #ccc9c0', padding: '6px 8px' }}>
+              {admin && (showNewCatInput
+                ? <div style={{ display: 'flex', gap: 3 }}>
+                    <input autoFocus value={newCatInput} onChange={e => setNewCatInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') addTopCategory(); if (e.key === 'Escape') { setShowNewCatInput(false); setNewCatInput('') } }}
+                      placeholder='Category name…'
+                      style={{ flex: 1, padding: '3px 5px', border: '1px solid #ccc9c0', borderRadius: 3, fontSize: '0.75rem', fontFamily: "'Source Serif 4',Georgia,serif", background: '#f8f7f4', color: '#222', minWidth: 0 }}/>
+                    <button type='button' onClick={addTopCategory}
+                      style={{ padding: '3px 6px', border: 'none', borderRadius: 3, background: '#1b4f72', color: '#fff', cursor: 'pointer', fontSize: '0.72rem' }}>+</button>
+                    <button type='button' onClick={() => { setShowNewCatInput(false); setNewCatInput('') }}
+                      style={{ padding: '3px 5px', border: '1px solid #ccc9c0', borderRadius: 3, background: 'none', cursor: 'pointer', fontSize: '0.72rem', color: '#888' }}>✕</button>
+                  </div>
+                : <button type='button' onClick={() => setShowNewCatInput(true)}
+                    style={{ width: '100%', padding: '4px 8px', border: '1px dashed #ccc9c0', borderRadius: 3, background: 'none', cursor: 'pointer', fontSize: '0.73rem', color: '#888', textAlign: 'left', fontFamily: "'Source Serif 4',Georgia,serif" }}>
+                    + New Category
+                  </button>
+              )}
+            </div>
           </div>
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${cardMin}px, 1fr))`, gap: isMobile ? '0.75rem' : '1rem' }}>
-          {visible.map(person => (
-            <NpcCard key={person.id} person={person} admin={admin}
-              onEdit={p => setFormPerson(p)}
-              onDelete={handleDelete}
-              onLightbox={p => setLightboxPerson(p)}
-            />
-          ))}
+
+        {/* Main: card grid */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '1rem' : '1.25rem 1.5rem' }}>
+          {isMobile && (
+            <select value={selectedCat ?? ''} onChange={e => setSelectedCat(e.target.value || null)}
+              style={{ width: '100%', marginBottom: '0.75rem', padding: '6px 8px', border: '1px solid #ccc9c0', borderRadius: 3, fontSize: '0.87rem', fontFamily: "'Source Serif 4',Georgia,serif", background: '#f8f7f4', color: '#222' }}>
+              <option value=''>All People</option>
+              {allFlatCategories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+          {selectedCat && (
+            <div style={{ fontSize: '0.62rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: '#aaa', marginBottom: '0.75rem' }}>{selectedCat}</div>
+          )}
+          {visible.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '5rem 0', color: '#aaa', fontSize: '0.9rem', fontStyle: 'italic' }}>
+              {search ? `No results for "${search}".` : selectedCat ? `No people in "${selectedCat}".` : `No people yet.${admin ? ' Use "+ Add Person" to add someone.' : ''}`}
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${cardMin}px, 1fr))`, gap: isMobile ? '0.75rem' : '1rem' }}>
+            {visible.map(person => (
+              <NpcCard key={person.id} person={person} admin={admin}
+                onEdit={p => setFormPerson(p)}
+                onDelete={handleDelete}
+                onLightbox={p => setLightboxPerson(p)}
+              />
+            ))}
+          </div>
         </div>
       </div>
 
       {lightboxPerson && <Lightbox person={lightboxPerson} onClose={() => setLightboxPerson(null)}/>}
-      {adding    && <PersonForm onSave={saveNew} onCancel={() => setAdding(false)}/>}
-      {formPerson && <PersonForm initial={formPerson} onSave={saveEdit} onCancel={() => setFormPerson(null)}/>}
+      {adding && <PersonForm allCategories={allFlatCategories} defaultCategory={selectedCat || ''} onSave={saveNew} onCancel={() => setAdding(false)}/>}
+      {formPerson && <PersonForm initial={formPerson} allCategories={allFlatCategories} defaultCategory={selectedCat || ''} onSave={saveEdit} onCancel={() => setFormPerson(null)}/>}
     </div>
   )
 }
