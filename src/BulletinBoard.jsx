@@ -2,6 +2,7 @@ import Adventures from './Adventures'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from './firebase'
+import { uidColor } from './usePresence'
 
 function useIsMobile(bp=680){
   const [m,setM]=useState(()=>window.innerWidth<bp)
@@ -42,8 +43,9 @@ function Pin({ color }) {
 }
 
 // ─── RSVP pin slot ────────────────────────────────────────────────────────────
-function RsvpPin({ filled, name, isMe, onClick, disabled }) {
+function RsvpPin({ filled, name, color, isMe, onClick, disabled }) {
   const [hovered, setHovered] = useState(false)
+  const pinColor = color || (isMe ? '#1b4f72' : '#8b3a3a')
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}
       onMouseEnter={() => setHovered(true)}
@@ -54,10 +56,10 @@ function RsvpPin({ filled, name, isMe, onClick, disabled }) {
         style={{
           width: 14, height: 14, borderRadius: '50%',
           background: filled
-            ? `radial-gradient(circle at 35% 35%, #fff6, ${isMe ? '#1b4f72' : '#8b3a3a'} 60%)`
+            ? `radial-gradient(circle at 35% 35%, #fff6, ${pinColor} 60%)`
             : 'rgba(0,0,0,0.12)',
           border: filled
-            ? `1.5px solid ${isMe ? '#1b4f72' : '#8b3a3a'}`
+            ? `1.5px solid ${pinColor}`
             : '1.5px dashed rgba(0,0,0,0.25)',
           boxShadow: filled ? '0 1px 3px rgba(0,0,0,0.3)' : 'none',
           cursor: disabled ? 'default' : filled && isMe ? 'pointer' : !filled ? 'pointer' : 'default',
@@ -109,7 +111,7 @@ function RsvpRow({ note, user, onRsvpChange }) {
     } else if (!myRsvp && !isFull) {
       // Claim this slot
       const name = user?.displayName || user?.email || 'Anonymous'
-      onRsvpChange([...rsvps, { uid: user.uid, name }])
+      onRsvpChange([...rsvps, { uid: user.uid, name, color: uidColor(user.uid) }])
     }
   }
 
@@ -131,6 +133,7 @@ function RsvpRow({ note, user, onRsvpChange }) {
               key={i}
               filled={!!rsvp}
               name={rsvp?.name || ''}
+              color={rsvp?.color}
               isMe={isMe}
               disabled={!canInteract}
               onClick={() => handleClick(i)}
@@ -281,14 +284,15 @@ function MobileNoteCard({ note, user, onClick }) {
           {Array.from({ length: max }).map((_, i) => {
             const rsvp = rsvps[i]
             const isMe = rsvp?.uid === user?.uid
+            const pinColor = rsvp?.color || (isMe ? '#1b4f72' : '#8b3a3a')
             return (
               <div key={i} title={rsvp?.name || 'Open'}
                 style={{ width: 12, height: 12, borderRadius: '50%',
                   background: rsvp
-                    ? `radial-gradient(circle at 35% 35%, #fff6, ${isMe ? '#1b4f72' : '#8b3a3a'} 60%)`
+                    ? `radial-gradient(circle at 35% 35%, #fff6, ${pinColor} 60%)`
                     : 'rgba(0,0,0,0.1)',
                   border: rsvp
-                    ? `1.5px solid ${isMe ? '#1b4f72' : '#8b3a3a'}`
+                    ? `1.5px solid ${pinColor}`
                     : '1.5px dashed rgba(0,0,0,0.2)',
                 }}/>
             )

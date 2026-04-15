@@ -21,10 +21,12 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.token.name == 'speep';
     }
 
-    // Bulletin board: all authenticated users can read; only speep can write
+    // Bulletin board: all authenticated users can read; only speep can create/delete;
+    // any authenticated user can update (needed for RSVP)
     match /bulletin/{docId} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.token.name == 'speep';
+      allow create, delete: if request.auth != null && request.auth.token.name == 'speep';
+      allow update: if request.auth != null;
     }
 
     // Adventures log: all authenticated users can read and write
