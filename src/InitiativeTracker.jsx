@@ -976,35 +976,35 @@ function NpcCard({ npc, isAdmin, onUpdate, onRemove }) {
   const ab = { background:'none', border:'1px solid #3a3a5a', borderRadius:3,
     color:'#aaa', cursor:'pointer', fontSize:'0.78rem', padding:'1px 6px', lineHeight:'1.6' }
 
-  const chip = (bg, border, col, used) => ({
-    display:'inline-flex', alignItems:'center', gap:4,
-    padding:'2px 8px', borderRadius:12,
-    background: used ? '#252525' : bg,
-    border:`1px solid ${used ? '#3a3a3a' : border}`,
-    color: used ? '#444' : col,
-    fontSize:'0.72rem',
-    textDecoration: used ? 'line-through' : 'none',
-    userSelect:'none',
+  const rxBtn = (active, color) => ({
+    background: active ? `${color}28` : 'none',
+    border: `1px solid ${active ? color : '#3a3a5a'}`,
+    borderRadius:4, cursor:'pointer', fontSize:'1rem',
+    padding:'1px 5px', lineHeight:'1.5', transition:'all 0.12s',
   })
 
   const addMotivation = (label) => {
     if (!label) return
-    upd({ motivations: [...(npc.motivations||[]), { id:uid(), label, used:false, visible:false }] })
+    upd({ motivations: [...(npc.motivations||[]), { id:uid(), label, used:false, visible:false, reaction:null }] })
     setNewMotivation('')
   }
   const toggleMotivationUsed = id =>
     upd({ motivations: (npc.motivations||[]).map(m => m.id===id ? {...m, used:!m.used} : m) })
   const toggleMotivationVisible = id =>
     upd({ motivations: (npc.motivations||[]).map(m => m.id===id ? {...m, visible:!m.visible} : m) })
+  const setMotivationReaction = (id, val) =>
+    upd({ motivations: (npc.motivations||[]).map(m => m.id===id ? {...m, reaction: m.reaction===val ? null : val} : m) })
   const removeMotivation = id =>
     upd({ motivations: (npc.motivations||[]).filter(m => m.id!==id) })
   const addPitfall = (label) => {
     if (!label) return
-    upd({ pitfalls: [...(npc.pitfalls||[]), { id:uid(), label, visible:false }] })
+    upd({ pitfalls: [...(npc.pitfalls||[]), { id:uid(), label, visible:false, reaction:null }] })
     setNewPitfall('')
   }
   const togglePitfallVisible = id =>
     upd({ pitfalls: (npc.pitfalls||[]).map(p => p.id===id ? {...p, visible:!p.visible} : p) })
+  const setPitfallReaction = (id, val) =>
+    upd({ pitfalls: (npc.pitfalls||[]).map(p => p.id===id ? {...p, reaction: p.reaction===val ? null : val} : p) })
   const removePitfall = id =>
     upd({ pitfalls: (npc.pitfalls||[]).filter(p => p.id!==id) })
 
@@ -1022,7 +1022,7 @@ function NpcCard({ npc, isAdmin, onUpdate, onRemove }) {
 
   return (
     <div style={{ background:'#1e1e32', border:'1px solid #3a3a5a', borderRadius:8,
-      padding:'14px 16px', minWidth:280, maxWidth:380, flexShrink:0, position:'relative' }}>
+      padding:'14px 16px', minWidth:340, maxWidth:560, flexShrink:0, position:'relative' }}>
 
       {/* Name + attitude */}
       <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:12 }}>
@@ -1093,25 +1093,41 @@ function NpcCard({ npc, isAdmin, onUpdate, onRemove }) {
 
       {/* Motivations */}
       <div style={{ marginBottom:12 }}>
-        <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#2e7d32', fontWeight:700, marginBottom:6 }}>Motivations</div>
-        <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:6 }}>
+        <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#2e7d32', fontWeight:700, marginBottom:8 }}>Motivations</div>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
           {(npc.motivations||[]).filter(m => isAdmin || m.visible).map(m=>(
-            <span key={m.id} style={chip('#0d2e10','#a5d6a7','#81c784', m.used)}>
-              {m.label}
-              {!m.used && (
-                <button onClick={()=>toggleMotivationUsed(m.id)}
-                  style={{ background:'none', border:'none', cursor:'pointer', color:'#81c784', padding:0, fontSize:'0.7rem', lineHeight:1 }}
-                  title='Mark used'>✓</button>
-              )}
-              {isAdmin && (
-                <button onClick={()=>toggleMotivationVisible(m.id)}
-                  style={{ background:'none', border:'none', cursor:'pointer', padding:0, fontSize:'0.7rem', lineHeight:1,
-                    color: m.visible ? '#c8b87a' : '#3a3a3a' }}
-                  title={m.visible ? 'Visible to players' : 'Hidden from players'}>👁</button>
-              )}
-              {isAdmin && <button onClick={()=>removeMotivation(m.id)}
-                style={{ background:'none', border:'none', cursor:'pointer', color:'#555', padding:0, fontSize:'0.65rem', lineHeight:1 }}>✕</button>}
-            </span>
+            <div key={m.id} style={{ background: m.used ? '#151520' : '#252540',
+              border:`1px solid ${m.used ? '#2a2a3a' : '#3a3a5a'}`,
+              borderRadius:6, padding:'7px 8px', minWidth:110,
+              opacity: m.used ? 0.5 : 1, transition:'opacity 0.2s' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6, gap:4 }}>
+                <span style={{ fontSize:'0.78rem', color: m.used ? '#555' : '#c8c0b0',
+                  fontFamily:"'Source Serif 4',Georgia,serif", flex:1,
+                  textDecoration: m.used ? 'line-through' : 'none' }}>
+                  {m.label}
+                </span>
+                {isAdmin && <div style={{ display:'flex', gap:2, flexShrink:0 }}>
+                  <button onClick={()=>toggleMotivationVisible(m.id)}
+                    style={{ background:'none', border:'none', cursor:'pointer', padding:0, fontSize:'0.72rem', lineHeight:1,
+                      color: m.visible ? '#c8b87a' : '#333' }}
+                    title={m.visible ? 'Visible to players' : 'Hidden'}>👁</button>
+                  <button onClick={()=>removeMotivation(m.id)}
+                    style={{ background:'none', border:'none', cursor:'pointer', color:'#3a3a3a', padding:0, fontSize:'0.65rem', lineHeight:1 }}>✕</button>
+                </div>}
+              </div>
+              <div style={{ display:'flex', gap:3, alignItems:'center' }}>
+                <button onClick={()=>setMotivationReaction(m.id,'up')} style={rxBtn(m.reaction==='up','#66bb6a')}>👍</button>
+                <button onClick={()=>setMotivationReaction(m.id,'down')} style={rxBtn(m.reaction==='down','#ef5350')}>👎</button>
+                <button onClick={()=>setMotivationReaction(m.id,'question')} style={rxBtn(m.reaction==='question','#ffd54f')}>❓</button>
+                {isAdmin && !m.used && (
+                  <button onClick={()=>toggleMotivationUsed(m.id)}
+                    style={{ background:'none', border:'1px solid #2a4a2a', borderRadius:4,
+                      cursor:'pointer', color:'#558b2f', padding:'1px 5px', fontSize:'0.65rem',
+                      lineHeight:'1.5', marginLeft:'auto' }}
+                    title='Mark used'>used</button>
+                )}
+              </div>
+            </div>
           ))}
         </div>
         {isAdmin && (
@@ -1137,20 +1153,31 @@ function NpcCard({ npc, isAdmin, onUpdate, onRemove }) {
 
       {/* Pitfalls */}
       <div>
-        <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#e65100', fontWeight:700, marginBottom:6 }}>Pitfalls</div>
-        <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:6 }}>
+        <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#e65100', fontWeight:700, marginBottom:8 }}>Pitfalls</div>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:8 }}>
           {(npc.pitfalls||[]).filter(p => isAdmin || p.visible).map(p=>(
-            <span key={p.id} style={chip('#2e1a0a','#ffcc80','#ffb74d', false)}>
-              {p.label}
-              {isAdmin && (
-                <button onClick={()=>togglePitfallVisible(p.id)}
-                  style={{ background:'none', border:'none', cursor:'pointer', padding:0, fontSize:'0.7rem', lineHeight:1,
-                    color: p.visible ? '#c8b87a' : '#3a3a3a' }}
-                  title={p.visible ? 'Visible to players' : 'Hidden from players'}>👁</button>
-              )}
-              {isAdmin && <button onClick={()=>removePitfall(p.id)}
-                style={{ background:'none', border:'none', cursor:'pointer', color:'#888', padding:0, fontSize:'0.65rem', lineHeight:1 }}>✕</button>}
-            </span>
+            <div key={p.id} style={{ background:'#2a1a0a', border:'1px solid #5a3a1a',
+              borderRadius:6, padding:'7px 8px', minWidth:110 }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6, gap:4 }}>
+                <span style={{ fontSize:'0.78rem', color:'#ffb74d',
+                  fontFamily:"'Source Serif 4',Georgia,serif", flex:1 }}>
+                  {p.label}
+                </span>
+                {isAdmin && <div style={{ display:'flex', gap:2, flexShrink:0 }}>
+                  <button onClick={()=>togglePitfallVisible(p.id)}
+                    style={{ background:'none', border:'none', cursor:'pointer', padding:0, fontSize:'0.72rem', lineHeight:1,
+                      color: p.visible ? '#c8b87a' : '#333' }}
+                    title={p.visible ? 'Visible to players' : 'Hidden'}>👁</button>
+                  <button onClick={()=>removePitfall(p.id)}
+                    style={{ background:'none', border:'none', cursor:'pointer', color:'#3a3a3a', padding:0, fontSize:'0.65rem', lineHeight:1 }}>✕</button>
+                </div>}
+              </div>
+              <div style={{ display:'flex', gap:3 }}>
+                <button onClick={()=>setPitfallReaction(p.id,'up')} style={rxBtn(p.reaction==='up','#66bb6a')}>👍</button>
+                <button onClick={()=>setPitfallReaction(p.id,'down')} style={rxBtn(p.reaction==='down','#ef5350')}>👎</button>
+                <button onClick={()=>setPitfallReaction(p.id,'question')} style={rxBtn(p.reaction==='question','#ffd54f')}>❓</button>
+              </div>
+            </div>
           ))}
         </div>
         {isAdmin && (
