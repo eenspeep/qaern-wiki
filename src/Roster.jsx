@@ -12,6 +12,11 @@ const slugify = t => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$
 
 const INFOBOX_FIELDS = ['Name', 'Class', 'Ancestry', 'Faction', 'Age', 'Player Name']
 
+const FACTION_COLORS = {
+  'scarlet pyre':    { glow: 'rgba(190, 35, 35, 0.30)', border: '#c88080' },
+  'amber ceremony':  { glow: 'rgba(195, 140, 0, 0.30)',  border: '#c8a845' },
+}
+
 const checkPassword = (input, hash) => btoa(input) === hash
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
@@ -157,6 +162,10 @@ function PdfViewer({ url, onClose }) {
 // ─── Character card ───────────────────────────────────────────────────────────
 function CharacterCard({ char, onClick }) {
   const [hovered, setHovered] = useState(false)
+  const fc = FACTION_COLORS[(char.faction || '').toLowerCase()]
+  const shadow = hovered
+    ? `0 8px 28px rgba(0,0,0,0.18)${fc ? `, 0 0 22px 5px ${fc.glow}` : ''}`
+    : `0 2px 8px rgba(0,0,0,0.08)${fc ? `, 0 0 10px 3px ${fc.glow}` : ''}`
   return (
     <div
       onClick={onClick}
@@ -165,15 +174,14 @@ function CharacterCard({ char, onClick }) {
       style={{
         cursor: 'pointer',
         borderRadius: 6,
-        overflow: 'hidden',
-        border: '1px solid #ccc9c0',
+        border: `1px solid ${fc ? fc.border : '#ccc9c0'}`,
         background: '#faf9f6',
-        boxShadow: hovered ? '0 8px 28px rgba(0,0,0,0.18)' : '0 2px 8px rgba(0,0,0,0.08)',
+        boxShadow: shadow,
         transform: hovered ? 'translateY(-3px)' : 'translateY(0)',
         transition: 'box-shadow 0.2s, transform 0.15s',
       }}>
-      {/* Portrait */}
-      <div style={{ width: '100%', aspectRatio: '3/4', background: '#d8d4cc', overflow: 'hidden', position: 'relative' }}>
+      {/* Portrait — overflow:hidden isolated here so it doesn't clip the card's box-shadow */}
+      <div style={{ width: '100%', aspectRatio: '3/4', background: '#d8d4cc', overflow: 'hidden', position: 'relative', borderRadius: '5px 5px 0 0' }}>
         {char.portrait
           ? <img src={char.portrait} alt={char.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
           : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem', color: '#a09888' }}>⚔</div>
