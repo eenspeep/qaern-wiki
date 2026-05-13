@@ -38,6 +38,103 @@ function parseWikiAction(text) {
   }
 }
 
+function stripHtml(html) {
+  return (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function DiffPreview({ actions, articles }) {
+  const [expanded, setExpanded] = useState({})
+  const toggle = i => setExpanded(e => ({ ...e, [i]: !e[i] }))
+
+  return (
+    <div style={{ marginBottom: 6 }}>
+      {actions.map((action, i) => {
+        const existing = articles[action.id] ||
+          Object.values(articles).find(a => a.title?.toLowerCase() === action.title?.toLowerCase())
+        const isNew = !existing
+
+        if (isNew) return (
+          <div key={i} style={{ fontSize: '0.74rem', color: '#8ab88a', padding: '2px 0',
+            display: 'flex', gap: 6, alignItems: 'center' }}>
+            <span style={{ color: '#4caf50', fontSize: '0.65rem', textTransform: 'uppercase', flexShrink: 0 }}>create</span>
+            <span>{action.title}</span>
+          </div>
+        )
+
+        // Collect changed fields
+        const fieldChanges = []
+        const simpleFields = [
+          ['title', 'Title'],
+          ['subtitle', 'Subtitle'],
+          ['category', 'Category'],
+        ]
+        for (const [key, label] of simpleFields) {
+          const from = existing[key] || ''
+          const to = action[key] !== undefined ? action[key] : from
+          if (from !== to) fieldChanges.push({ label, from, to })
+        }
+        const oldBox = existing.infobox || {}
+        const newBox = action.infobox !== undefined ? action.infobox : oldBox
+        const boxKeys = new Set([...Object.keys(oldBox), ...Object.keys(newBox)])
+        for (const key of boxKeys) {
+          const from = oldBox[key] || ''
+          const to = newBox[key] !== undefined ? newBox[key] : from
+          if (from !== to) fieldChanges.push({ label: key, from, to })
+        }
+        const oldText = stripHtml(existing.content || '')
+        const newText = stripHtml(action.content !== undefined ? action.content : existing.content || '')
+        const contentChanged = oldText !== newText
+
+        const totalChanges = fieldChanges.length + (contentChanged ? 1 : 0)
+        const isOpen = expanded[i]
+
+        return (
+          <div key={i} style={{ marginBottom: 2 }}>
+            <div style={{ fontSize: '0.74rem', color: '#8ab88a', display: 'flex', gap: 6,
+              alignItems: 'center', cursor: totalChanges > 0 ? 'pointer' : 'default' }}
+              onClick={() => totalChanges > 0 && toggle(i)}>
+              <span style={{ color: '#c8b87a', fontSize: '0.65rem', textTransform: 'uppercase', flexShrink: 0 }}>edit</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{action.title}</span>
+              {totalChanges > 0 && (
+                <span style={{ color: '#6a7fa5', fontSize: '0.65rem', flexShrink: 0 }}>
+                  {totalChanges} change{totalChanges > 1 ? 's' : ''} {isOpen ? '▲' : '▼'}
+                </span>
+              )}
+              {totalChanges === 0 && <span style={{ color: '#4a5a6a', fontSize: '0.65rem' }}>no changes</span>}
+            </div>
+            {isOpen && (
+              <div style={{ marginLeft: 8, marginTop: 2, borderLeft: '2px solid #2a3a5a', paddingLeft: 8 }}>
+                {fieldChanges.map((c, ci) => (
+                  <div key={ci} style={{ fontSize: '0.72rem', marginBottom: 1 }}>
+                    <span style={{ color: '#6a7fa5' }}>{c.label}: </span>
+                    <span style={{ color: '#ff8a80', textDecoration: 'line-through' }}>{c.from || '—'}</span>
+                    <span style={{ color: '#6a7fa5' }}> → </span>
+                    <span style={{ color: '#a5d6a7' }}>{c.to || '—'}</span>
+                  </div>
+                ))}
+                {contentChanged && (
+                  <div style={{ fontSize: '0.72rem', marginBottom: 1 }}>
+                    <span style={{ color: '#6a7fa5' }}>content: </span>
+                    <span style={{ color: '#ff8a80' }}>{oldText.length} chars</span>
+                    <span style={{ color: '#6a7fa5' }}> → </span>
+                    <span style={{ color: '#a5d6a7' }}>{newText.length} chars</span>
+                    {newText.length > 0 && (
+                      <div style={{ color: '#8898aa', fontSize: '0.68rem', marginTop: 2, fontStyle: 'italic',
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>
+                        {newText.slice(0, 160)}{newText.length > 160 ? '…' : ''}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function stripWikiAction(text) {
   return text
     .replace(/<wiki_actions>[\s\S]*?<\/wiki_actions>/, '')
@@ -400,25 +497,14 @@ export default function WikiKeeper({ articles, user, onArticleChanged }) {
                 </div>
                 {m.pendingActions && pendingActions && (
                   <div style={{ marginTop: 8 }}>
-                    {/* Article queue preview */}
+                    {/* Article queue with diff preview */}
                     <div style={{ background: '#1a2a1a', border: '1px solid #2d5a2d',
                       borderRadius: 4, padding: '6px 10px', marginBottom: 6 }}>
                       <div style={{ fontSize: '0.68rem', textTransform: 'uppercase',
-                        letterSpacing: '0.08em', color: '#4a7a4a', marginBottom: 4 }}>
+                        letterSpacing: '0.08em', color: '#4a7a4a', marginBottom: 6 }}>
                         {pendingActions.length === 1 ? '1 article queued' : `${pendingActions.length} articles queued`}
                       </div>
-                      {pendingActions.map((a, i) => (
-                        <div key={i} style={{ fontSize: '0.78rem', color: '#8ab88a',
-                          display: 'flex', gap: 6, alignItems: 'center', padding: '1px 0' }}>
-                          <span style={{ color: a.action === 'create' ? '#4caf50' : '#c8b87a',
-                            fontSize: '0.65rem', textTransform: 'uppercase', flexShrink: 0 }}>
-                            {a.action}
-                          </span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {a.title}
-                          </span>
-                        </div>
-                      ))}
+                      <DiffPreview actions={pendingActions} articles={articles} />
                     </div>
                     <div style={{ display: 'flex', gap: 6 }}>
                       <button onClick={confirmAction} disabled={loading}

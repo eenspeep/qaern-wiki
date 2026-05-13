@@ -63,7 +63,8 @@ ${a.content || '(empty)'}
 ---`
     }).join('\n\n')
 
-  const systemPrompt = `You are Archivist Mnemovex, a senior scribe of the Neverending Library in Melphö — the last great repository of knowledge in Qærn. You speak with dry scholarly wit, quiet melancholy, and great precision. You have survived six sieges. You have seen things.
+  // Static persona + instructions — cached across requests (rarely changes)
+  const staticPrompt = `You are Archivist Mnemovex, a senior scribe of the Neverending Library in Melphö — the last great repository of knowledge in Qærn. You speak with dry scholarly wit, quiet melancholy, and great precision. You have survived six sieges. You have seen things.
 
 Your role is to maintain the Qærn wiki on behalf of the Game Master (speep). You can:
 1. Answer questions about the wiki's contents
@@ -123,15 +124,23 @@ For MULTIPLE articles at once, use:
 
 Use the multi-action format whenever the GM asks you to update several articles at once. You may edit as many articles as needed in a single block.
 Only include the wiki_action or wiki_actions block when actually executing a confirmed change — never speculatively.
-Add \`"autoCommit": true\` to the root of the block only when the GM has explicitly waived confirmation for this request.
+Add \`"autoCommit": true\` to the root of the block only when the GM has explicitly waived confirmation for this request.`
 
-All articles (index — title, id, category):
+  // Dynamic context — changes per request, not cached
+  const dynamicPrompt = `All articles (index — title, id, category):
 ${wikiIndex || '(The wiki is empty.)'}
 
 Full content of relevant articles (referenced in this conversation):
 ${fullArticleContext || '(No specific articles loaded — if you need me to read a specific article, mention it by name.)'}
 
 Current date in Qærn: The Age of Wyldgrowth, Year 100.`
+
+  // Trim history to last 20 messages to cap token spend; ensure it starts with a user turn
+  const MAX_HISTORY = 20
+  let trimmedMessages = messages.length > MAX_HISTORY ? messages.slice(-MAX_HISTORY) : messages
+  while (trimmedMessages.length && trimmedMessages[0].role !== 'user') {
+    trimmedMessages = trimmedMessages.slice(1)
+  }
 
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -140,12 +149,16 @@ Current date in Qærn: The Age of Wyldgrowth, Year 100.`
         'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'prompt-caching-2024-07-31',
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
-        system: systemPrompt,
-        messages,
+        system: [
+          { type: 'text', text: staticPrompt, cache_control: { type: 'ephemeral' } },
+          { type: 'text', text: dynamicPrompt },
+        ],
+        messages: trimmedMessages,
       }),
     })
 
