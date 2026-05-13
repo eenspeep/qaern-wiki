@@ -52,6 +52,38 @@ const BLANK_MONSTER = (name, hp) => ({
   conditions: [],
 })
 
+const BLANK_MONTAGE = {
+  type: 'montage',
+  successLimit: 6,
+  failureLimit: 4,
+  successes: 0,
+  failures: 0,
+  currentRound: 1,
+  complications: [],
+  players: [],
+}
+
+const ATTITUDE_STATS = {
+  hostile:    { interest: 1, patience: 2 },
+  suspicious: { interest: 2, patience: 2 },
+  neutral:    { interest: 2, patience: 3 },
+  open:       { interest: 3, patience: 3 },
+  friendly:   { interest: 3, patience: 4 },
+  trusting:   { interest: 3, patience: 5 },
+}
+
+const MOTIVATIONS = [
+  'Benevolence','Discovery','Freedom','Greed','Higher Authority',
+  'Justice','Legacy','Peace','Power','Protection','Revelry','Vengeance',
+]
+
+const BLANK_NPC = () => ({
+  id: uid(), name: 'NPC', attitude: 'neutral', interest: 2, patience: 3,
+  motivations: [], pitfalls: [],
+})
+
+const BLANK_NEGOTIATION = { type: 'negotiation', npcs: [] }
+
 const CONDITIONS = [
   { id: 'bleeding',   label: 'Bleeding',   color: '#c0392b', desc: "Can't regain Stamina." },
   { id: 'dazed',      label: 'Dazed',      color: '#9b59b6', desc: 'Can only move, maneuver, or act — just one. No triggered actions.' },
@@ -699,6 +731,457 @@ function TemplateModal({ templates, onLoad, onDelete, onClose }) {
   )
 }
 
+// ─── Montage encounter ───────────────────────────────────────────────────────
+function ScoreCircles({ count, filled, color }) {
+  return (
+    <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginTop:4 }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} style={{
+          width:18, height:18, borderRadius:'50%',
+          background: i < filled ? color : 'transparent',
+          border:`2px solid ${color}`,
+          flexShrink:0, transition:'background 0.15s',
+        }}/>
+      ))}
+    </div>
+  )
+}
+
+function MontageEncounter({ state, update, isAdmin, user, isMobile }) {
+  const [newPlayerName, setNewPlayerName] = useState('')
+  const {
+    successLimit=6, failureLimit=4,
+    successes=0, failures=0,
+    currentRound=1,
+    complications=[], players=[],
+  } = state
+
+  const outcome = successes >= successLimit ? 'success'
+                : failures  >= failureLimit  ? 'failure'
+                : null
+
+  const ab = { background:'none', border:'1px solid #3a3a5a', borderRadius:3,
+    color:'#aaa', cursor:'pointer', fontSize:'0.82rem', padding:'1px 7px', lineHeight:'1.6' }
+
+  const updPlayer = (id, patch) =>
+    update({ ...state, players: players.map(p => p.id===id ? {...p,...patch} : p) })
+  const removePlayer = id =>
+    update({ ...state, players: players.filter(p => p.id!==id) })
+  const addPlayer = () => {
+    if (!newPlayerName.trim()) return
+    update({ ...state, players: [...players, { id:uid(), name:newPlayerName.trim(), doneRound1:false, doneRound2:false }] })
+    setNewPlayerName('')
+  }
+  const addComplication = () =>
+    update({ ...state, complications: [...complications, { id:uid(), title:'New Complication', text:'' }] })
+  const updComplication = (id, patch) =>
+    update({ ...state, complications: complications.map(c => c.id===id ? {...c,...patch} : c) })
+  const removeComplication = id =>
+    update({ ...state, complications: complications.filter(c => c.id!==id) })
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow: isMobile ? 'auto' : 'hidden', background:'#1a1a2a' }}>
+      {outcome && (
+        <div style={{
+          padding:'8px 16px', textAlign:'center', flexShrink:0,
+          background: outcome==='success' ? '#0d2e10' : '#2e0d0d',
+          borderBottom:`1px solid ${outcome==='success' ? '#2e7d32' : '#b71c1c'}`,
+          color: outcome==='success' ? '#66bb6a' : '#ef5350',
+          fontFamily:"'IM Fell English',serif", fontSize:'1rem', letterSpacing:'0.15em',
+        }}>
+          {outcome==='success' ? 'TOTAL SUCCESS' : 'TOTAL FAILURE'}
+        </div>
+      )}
+      <div style={{ flex:1, display: isMobile ? 'flex' : 'grid', flexDirection: isMobile ? 'column' : undefined,
+        gridTemplateColumns: isMobile ? undefined : '1fr 1fr', overflow: isMobile ? 'visible' : 'hidden' }}>
+        {/* Scoreboard */}
+        <div style={{ borderRight: isMobile ? 'none' : '1px solid #2a2a4a', borderBottom: isMobile ? '2px solid #2a2a4a' : 'none',
+          display:'flex', flexDirection:'column', overflowY: isMobile ? 'visible' : 'auto', padding:'16px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:20 }}>
+            <span style={{ fontSize:'0.65rem', textTransform:'uppercase', letterSpacing:'0.12em', color:'#888', fontWeight:700 }}>Round</span>
+            {isAdmin && <button onClick={()=>update({...state,currentRound:Math.max(1,currentRound-1)})} style={ab}>−</button>}
+            <span style={{ color:'#c8b87a', fontFamily:"'IM Fell English',serif", fontSize:'1.1rem', minWidth:20, textAlign:'center' }}>{currentRound}</span>
+            {isAdmin && <button onClick={()=>update({...state,currentRound:Math.min(2,currentRound+1)})} style={ab}>+</button>}
+            {!outcome && <span style={{ fontSize:'0.72rem', color:'#555', fontStyle:'italic' }}>
+              {currentRound===1 ? 'Round 1 of 2' : 'Round 2 (final)'}
+            </span>}
+          </div>
+
+          <div style={{ marginBottom:20 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+              <span style={{ fontSize:'0.65rem', textTransform:'uppercase', letterSpacing:'0.12em', color:'#2e7d32', fontWeight:700 }}>Successes</span>
+              {isAdmin && <>
+                <button onClick={()=>update({...state,successLimit:Math.max(1,successLimit-1)})} style={ab}>−</button>
+                <span style={{ fontSize:'0.65rem', color:'#555' }}>{successLimit} needed</span>
+                <button onClick={()=>update({...state,successLimit:successLimit+1})} style={ab}>+</button>
+              </>}
+              {!isAdmin && <span style={{ fontSize:'0.65rem', color:'#555' }}>{successLimit} needed</span>}
+            </div>
+            <ScoreCircles count={successLimit} filled={successes} color='#2e7d32'/>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:10 }}>
+              <button onClick={()=>update({...state,successes:Math.max(0,successes-1)})} style={ab}>−</button>
+              <span style={{ color:'#4caf50', fontFamily:"'IM Fell English',serif", fontSize:'1.2rem', minWidth:42, textAlign:'center' }}>{successes}/{successLimit}</span>
+              <button onClick={()=>update({...state,successes:Math.min(successLimit,successes+1)})} style={ab}>+</button>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+              <span style={{ fontSize:'0.65rem', textTransform:'uppercase', letterSpacing:'0.12em', color:'#b71c1c', fontWeight:700 }}>Failures</span>
+              {isAdmin && <>
+                <button onClick={()=>update({...state,failureLimit:Math.max(1,failureLimit-1)})} style={ab}>−</button>
+                <span style={{ fontSize:'0.65rem', color:'#555' }}>{failureLimit} allowed</span>
+                <button onClick={()=>update({...state,failureLimit:failureLimit+1})} style={ab}>+</button>
+              </>}
+              {!isAdmin && <span style={{ fontSize:'0.65rem', color:'#555' }}>{failureLimit} allowed</span>}
+            </div>
+            <ScoreCircles count={failureLimit} filled={failures} color='#b71c1c'/>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:10 }}>
+              <button onClick={()=>update({...state,failures:Math.max(0,failures-1)})} style={ab}>−</button>
+              <span style={{ color:'#ef5350', fontFamily:"'IM Fell English',serif", fontSize:'1.2rem', minWidth:42, textAlign:'center' }}>{failures}/{failureLimit}</span>
+              <button onClick={()=>update({...state,failures:Math.min(failureLimit,failures+1)})} style={ab}>+</button>
+            </div>
+          </div>
+        </div>
+
+        {/* Players */}
+        <div style={{ display:'flex', flexDirection:'column', overflow: isMobile ? 'visible' : 'hidden', flexShrink: isMobile ? 0 : undefined }}>
+          <div style={{ padding:'10px 16px 6px', background:'#12121e', borderBottom:'1px solid #2a2a4a',
+            fontSize:'0.68rem', textTransform:'uppercase', letterSpacing:'0.1em', color:PLAYER_COLOR, fontWeight:700 }}>
+            Players
+          </div>
+          <div style={{ flex: isMobile ? 'none' : 1, overflowY: isMobile ? 'visible' : 'auto', padding:'10px 12px' }}>
+            {players.map(p => (
+              <div key={p.id} style={{ padding:'8px 10px', borderRadius:4, background:'#252540',
+                border:'1px solid #3a3a5a', marginBottom:6, display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ flex:1, fontSize:'0.85rem', color:'#c8c0b0', fontFamily:"'IM Fell English',serif" }}>{p.name}</span>
+                <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:'0.7rem',
+                  color: p.doneRound1 ? '#66bb6a' : '#555', cursor:'pointer', userSelect:'none' }}>
+                  <input type='checkbox' checked={p.doneRound1||false}
+                    onChange={e => updPlayer(p.id, { doneRound1: e.target.checked })}
+                    style={{ accentColor:'#2e7d32', width:13, height:13 }}/>
+                  R1
+                </label>
+                <label style={{ display:'flex', alignItems:'center', gap:4, fontSize:'0.7rem',
+                  color: p.doneRound2 ? '#66bb6a' : '#555', cursor:'pointer', userSelect:'none' }}>
+                  <input type='checkbox' checked={p.doneRound2||false}
+                    onChange={e => updPlayer(p.id, { doneRound2: e.target.checked })}
+                    style={{ accentColor:'#2e7d32', width:13, height:13 }}/>
+                  R2
+                </label>
+                <button onClick={() => removePlayer(p.id)}
+                  style={{ background:'none', border:'none', cursor:'pointer', color:'#555', fontSize:'0.75rem', padding:'0 2px' }}>✕</button>
+              </div>
+            ))}
+            {user && (
+              <div style={{ display:'flex', gap:6, marginTop:8 }}>
+                <input value={newPlayerName} onChange={e=>setNewPlayerName(e.target.value)}
+                  onKeyDown={e=>e.key==='Enter'&&addPlayer()} placeholder='Add player…'
+                  style={{ flex:1, padding:'5px 8px', border:'1px solid #2a3a5a', borderRadius:3,
+                    background:'#252540', color:'#c8c0b0', fontSize:'0.82rem',
+                    fontFamily:"'Source Serif 4',Georgia,serif", outline:'none' }}/>
+                <button onClick={addPlayer}
+                  style={{ padding:'5px 10px', border:'none', borderRadius:3,
+                    background:PLAYER_COLOR, color:'#fff', cursor:'pointer', fontSize:'0.8rem' }}>+</button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Complications */}
+      <div style={{ borderTop:'1px solid #2a2a4a', background:'#12121e', padding:'12px 16px',
+        flexShrink:0, maxHeight: isMobile ? 'none' : '38%', overflowY: isMobile ? 'visible' : 'auto' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+          <span style={{ fontSize:'0.65rem', textTransform:'uppercase', letterSpacing:'0.12em', color:'#c8b87a', fontWeight:700 }}>Complications</span>
+          {isAdmin && (
+            <button onClick={addComplication}
+              style={{ padding:'2px 8px', border:'1px solid #3a3a5a', borderRadius:3,
+                background:'none', color:'#888', cursor:'pointer', fontSize:'0.72rem',
+                fontFamily:"'Source Serif 4',Georgia,serif" }}>+ Add</button>
+          )}
+        </div>
+        {complications.length===0 && (
+          <div style={{ fontSize:'0.78rem', color:'#3a3a3a', fontStyle:'italic' }}>No complications.</div>
+        )}
+        <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
+          {complications.map(c => (
+            <div key={c.id} style={{ background:'#1e1e32', border:'1px solid #3a3a5a', borderRadius:6,
+              padding:'10px 12px', minWidth:180, maxWidth:300, position:'relative' }}>
+              {isAdmin && (
+                <button onClick={()=>removeComplication(c.id)}
+                  style={{ position:'absolute', top:5, right:5, background:'none', border:'none',
+                    cursor:'pointer', color:'#444', fontSize:'0.7rem', padding:0, lineHeight:1 }}>✕</button>
+              )}
+              <input value={c.title||''} onChange={e=>isAdmin&&updComplication(c.id,{title:e.target.value})}
+                readOnly={!isAdmin}
+                style={{ width:'100%', background:'none', border:'none', borderBottom:'1px solid #3a3a5a',
+                  color:'#c8b87a', fontSize:'0.82rem', fontFamily:"'IM Fell English',serif",
+                  marginBottom:6, padding:'2px 0', outline:'none',
+                  cursor:isAdmin?'text':'default', boxSizing:'border-box' }}/>
+              <textarea value={c.text||''} onChange={e=>isAdmin&&updComplication(c.id,{text:e.target.value})}
+                readOnly={!isAdmin} rows={3}
+                style={{ width:'100%', background:'none', border:'none', resize:'vertical',
+                  color:'#c8c0b0', fontSize:'0.78rem', fontFamily:"'Source Serif 4',Georgia,serif",
+                  outline:'none', padding:0, cursor:isAdmin?'text':'default', boxSizing:'border-box' }}/>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Negotiation encounter ────────────────────────────────────────────────────
+const INTEREST_LABELS = [
+  { label:'No, and…', color:'#7f0000' },
+  { label:'No.',           color:'#b71c1c' },
+  { label:'No, but…', color:'#e65100' },
+  { label:'Yes, but…',color:'#558b2f' },
+  { label:'Yes.',          color:'#2e7d32' },
+  { label:'Yes, and…',color:'#f9a825' },
+]
+
+function NpcDiamond({ filled, col }) {
+  return (
+    <svg width='14' height='14' viewBox='0 0 14 14' style={{ flexShrink:0 }}>
+      <polygon points='7,1 13,7 7,13 1,7' fill={filled ? col : 'none'} stroke={col} strokeWidth='1.5'/>
+    </svg>
+  )
+}
+
+function NpcCard({ npc, isAdmin, onUpdate, onRemove }) {
+  const [newMotivation, setNewMotivation] = useState('')
+  const [newPitfall, setNewPitfall] = useState('')
+  const [editingName, setEditingName] = useState(false)
+  const [nameVal, setNameVal] = useState(npc.name)
+
+  const upd = patch => onUpdate({ ...npc, ...patch })
+
+  const interest = Math.max(0, Math.min(5, npc.interest ?? 2))
+  const patience = Math.max(0, Math.min(5, npc.patience ?? 3))
+  const interestInfo = INTEREST_LABELS[interest]
+
+  const ab = { background:'none', border:'1px solid #3a3a5a', borderRadius:3,
+    color:'#aaa', cursor:'pointer', fontSize:'0.78rem', padding:'1px 6px', lineHeight:'1.6' }
+
+  const chip = (bg, border, col, used) => ({
+    display:'inline-flex', alignItems:'center', gap:4,
+    padding:'2px 8px', borderRadius:12,
+    background: used ? '#252525' : bg,
+    border:`1px solid ${used ? '#3a3a3a' : border}`,
+    color: used ? '#444' : col,
+    fontSize:'0.72rem',
+    textDecoration: used ? 'line-through' : 'none',
+    userSelect:'none',
+  })
+
+  const addMotivation = (label) => {
+    if (!label) return
+    upd({ motivations: [...(npc.motivations||[]), { id:uid(), label, used:false }] })
+    setNewMotivation('')
+  }
+  const toggleMotivationUsed = id =>
+    upd({ motivations: (npc.motivations||[]).map(m => m.id===id ? {...m, used:!m.used} : m) })
+  const removeMotivation = id =>
+    upd({ motivations: (npc.motivations||[]).filter(m => m.id!==id) })
+  const addPitfall = () => {
+    if (!newPitfall.trim()) return
+    upd({ pitfalls: [...(npc.pitfalls||[]), { id:uid(), label:newPitfall.trim() }] })
+    setNewPitfall('')
+  }
+  const removePitfall = id =>
+    upd({ pitfalls: (npc.pitfalls||[]).filter(p => p.id!==id) })
+
+  const handleAttitudeChange = att => {
+    const stats = ATTITUDE_STATS[att]
+    if (stats && confirm(`Reset Interest and Patience to defaults for "${att}"?`)) {
+      upd({ attitude:att, interest:stats.interest, patience:stats.patience })
+    } else {
+      upd({ attitude:att })
+    }
+  }
+
+  const availableMotivations = MOTIVATIONS.filter(m => !(npc.motivations||[]).some(e => e.label===m))
+
+  return (
+    <div style={{ background:'#1e1e32', border:'1px solid #3a3a5a', borderRadius:8,
+      padding:'14px 16px', minWidth:280, maxWidth:380, flexShrink:0, position:'relative' }}>
+
+      {/* Name + attitude */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:12 }}>
+        {editingName && isAdmin
+          ? <input autoFocus value={nameVal} onChange={e=>setNameVal(e.target.value)}
+              onBlur={()=>{upd({name:nameVal});setEditingName(false)}}
+              onKeyDown={e=>{if(e.key==='Enter'){upd({name:nameVal});setEditingName(false)}if(e.key==='Escape')setEditingName(false)}}
+              style={{ flex:1, padding:'2px 6px', border:'1px solid #c8b87a', borderRadius:3,
+                fontSize:'1rem', fontFamily:"'IM Fell English',serif",
+                background:'#12121e', color:'#c8b87a', outline:'none' }}/>
+          : <span onDoubleClick={()=>isAdmin&&(setNameVal(npc.name),setEditingName(true))}
+              style={{ flex:1, fontFamily:"'IM Fell English',serif", fontSize:'1rem',
+                color:'#c8b87a', cursor:isAdmin?'text':'default' }}>
+              {npc.name}
+            </span>
+        }
+        {isAdmin
+          ? <select value={npc.attitude||'neutral'} onChange={e=>handleAttitudeChange(e.target.value)}
+              style={{ fontSize:'0.7rem', border:'1px solid #3a3a5a', borderRadius:3,
+                background:'#252540', color:'#aaa', padding:'2px 4px', cursor:'pointer' }}>
+              {Object.keys(ATTITUDE_STATS).map(a=>(
+                <option key={a} value={a}>{a.charAt(0).toUpperCase()+a.slice(1)}</option>
+              ))}
+            </select>
+          : <span style={{ fontSize:'0.7rem', color:'#555', fontStyle:'italic' }}>{npc.attitude}</span>
+        }
+        {isAdmin && <button onClick={onRemove}
+          style={{ background:'none', border:'none', cursor:'pointer', color:'#444', fontSize:'0.75rem', padding:'0 2px' }}>✕</button>}
+      </div>
+
+      {/* Interest */}
+      <div style={{ marginBottom:12 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+          <span style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#666', fontWeight:700, width:60 }}>Interest</span>
+          <button onClick={()=>upd({interest:Math.max(0,interest-1)})} style={ab}>−</button>
+          <div style={{ display:'flex', gap:3 }}>
+            {Array.from({length:5}).map((_,i)=>(
+              <NpcDiamond key={i} filled={i<interest} col={interestInfo.color}/>
+            ))}
+          </div>
+          <button onClick={()=>upd({interest:Math.min(5,interest+1)})} style={ab}>+</button>
+        </div>
+        <div style={{ fontSize:'0.75rem', color: interest===0 ? '#ef5350' : interestInfo.color, fontStyle:'italic', paddingLeft:66 }}>
+          {interest===0 ? 'NEGOTIATION ENDED' : interestInfo.label}
+        </div>
+      </div>
+
+      {/* Patience */}
+      <div style={{ marginBottom:14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
+          <span style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#666', fontWeight:700, width:60 }}>Patience</span>
+          <button onClick={()=>upd({patience:Math.max(0,patience-1)})} style={ab}>−</button>
+          <div style={{ display:'flex', gap:3 }}>
+            {Array.from({length:5}).map((_,i)=>(
+              <NpcDiamond key={i} filled={i<patience} col='#7986cb'/>
+            ))}
+          </div>
+          <button onClick={()=>upd({patience:Math.min(5,patience+1)})} style={ab}>+</button>
+        </div>
+        {patience===0 && (
+          <div style={{ display:'inline-block', padding:'2px 8px', borderRadius:10,
+            background:'#3a2a10', border:'1px solid #f9a825', color:'#f9a825',
+            fontSize:'0.65rem', fontWeight:700, letterSpacing:'0.08em', marginLeft:66 }}>
+            FINAL OFFER
+          </div>
+        )}
+      </div>
+
+      {/* Motivations */}
+      <div style={{ marginBottom:12 }}>
+        <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#2e7d32', fontWeight:700, marginBottom:6 }}>Motivations</div>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:6 }}>
+          {(npc.motivations||[]).map(m=>(
+            <span key={m.id} style={chip('#0d2e10','#a5d6a7','#81c784', m.used)}>
+              {m.label}
+              {!m.used && (
+                <button onClick={()=>toggleMotivationUsed(m.id)}
+                  style={{ background:'none', border:'none', cursor:'pointer', color:'#81c784', padding:0, fontSize:'0.7rem', lineHeight:1 }}
+                  title='Mark used'>✓</button>
+              )}
+              {isAdmin && <button onClick={()=>removeMotivation(m.id)}
+                style={{ background:'none', border:'none', cursor:'pointer', color:'#555', padding:0, fontSize:'0.65rem', lineHeight:1 }}>✕</button>}
+            </span>
+          ))}
+        </div>
+        {isAdmin && (
+          <div style={{ display:'flex', gap:4 }}>
+            <select value={newMotivation} onChange={e=>setNewMotivation(e.target.value)}
+              style={{ flex:1, fontSize:'0.72rem', border:'1px solid #2a4a2a', borderRadius:3,
+                background:'#0d2e10', color:'#c8c0b0', padding:'2px 4px', minWidth:0 }}>
+              <option value=''>Add motivation…</option>
+              {availableMotivations.map(m=><option key={m} value={m}>{m}</option>)}
+              <option value='__custom__'>Custom…</option>
+            </select>
+            <button onClick={()=>{
+              if (newMotivation==='__custom__') {
+                const v=prompt('Motivation:')
+                if(v) addMotivation(v)
+                setNewMotivation('')
+              } else addMotivation(newMotivation)
+            }}
+              style={{ padding:'2px 8px', border:'none', borderRadius:3, background:'#2e7d32', color:'#fff', cursor:'pointer', fontSize:'0.72rem' }}>+</button>
+          </div>
+        )}
+      </div>
+
+      {/* Pitfalls */}
+      <div>
+        <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#e65100', fontWeight:700, marginBottom:6 }}>Pitfalls</div>
+        <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:6 }}>
+          {(npc.pitfalls||[]).map(p=>(
+            <span key={p.id} style={chip('#2e1a0a','#ffcc80','#ffb74d', false)}>
+              {p.label}
+              {isAdmin && <button onClick={()=>removePitfall(p.id)}
+                style={{ background:'none', border:'none', cursor:'pointer', color:'#888', padding:0, fontSize:'0.65rem', lineHeight:1 }}>✕</button>}
+            </span>
+          ))}
+        </div>
+        {isAdmin && (
+          <div style={{ display:'flex', gap:4 }}>
+            <input value={newPitfall} onChange={e=>setNewPitfall(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&addPitfall()}
+              placeholder='Add pitfall…'
+              style={{ flex:1, padding:'3px 6px', border:'1px solid #4a2a1a', borderRadius:3,
+                background:'#2e1a0a', color:'#c8c0b0', fontSize:'0.72rem',
+                fontFamily:"'Source Serif 4',Georgia,serif", minWidth:0 }}/>
+            <button onClick={addPitfall}
+              style={{ padding:'2px 8px', border:'none', borderRadius:3, background:'#e65100', color:'#fff', cursor:'pointer', fontSize:'0.72rem' }}>+</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function NegotiationEncounter({ state, update, isAdmin }) {
+  const npcs = state.npcs || []
+
+  const addNpc = () =>
+    update({ ...state, npcs: [...npcs, BLANK_NPC()] })
+  const updNpc = (id, updatedNpc) =>
+    update({ ...state, npcs: npcs.map(n => n.id===id ? updatedNpc : n) })
+  const removeNpc = id => {
+    const npc = npcs.find(n => n.id===id)
+    const hasData = npc && ((npc.motivations||[]).length || (npc.pitfalls||[]).length || npc.name!=='NPC')
+    if (hasData && !confirm('Remove this NPC?')) return
+    update({ ...state, npcs: npcs.filter(n => n.id!==id) })
+  }
+
+  return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'#1a1a2a' }}>
+      <div style={{ flex:1, overflowY:'auto', padding:'16px' }}>
+        {npcs.length===0 && (
+          <div style={{ color:'#444', fontStyle:'italic', fontSize:'0.85rem', textAlign:'center', marginTop:40 }}>
+            No NPCs yet.{isAdmin ? ' Click “+ Add NPC” to begin.' : ''}
+          </div>
+        )}
+        <div style={{ display:'flex', flexWrap:'wrap', gap:16, marginBottom:16 }}>
+          {npcs.map(npc=>(
+            <NpcCard key={npc.id} npc={npc} isAdmin={isAdmin}
+              onUpdate={updatedNpc=>updNpc(npc.id, updatedNpc)}
+              onRemove={()=>removeNpc(npc.id)}/>
+          ))}
+        </div>
+        {isAdmin && (
+          <button onClick={addNpc}
+            style={{ padding:'6px 14px', border:'1px solid #3a3a5a', borderRadius:4,
+              background:'none', color:'#888', cursor:'pointer', fontSize:'0.82rem',
+              fontFamily:"'Source Serif 4',Georgia,serif" }}>+ Add NPC</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function InitiativeTracker({ user, onClose }) {
   const admin = isAdmin(user)
@@ -811,12 +1294,16 @@ export default function InitiativeTracker({ user, onClose }) {
     await setDoc(doc(db, 'initiative/tabs'), { tabs: newTabs, updatedAt: serverTimestamp() })
   }
 
-  const addTab = () => {
+  const addTab = (type = 'combat') => {
     const name = newTabName.trim() || `Encounter ${tabs.length + 1}`
-    const newTab = { id: uid(), name }
+    const newTab = { id: uid(), name, type }
     const newTabs = [...tabs, newTab]
     setTabs(newTabs)
     persistTabs(newTabs)
+    const blankState = type === 'montage' ? { ...BLANK_MONTAGE }
+                     : type === 'negotiation' ? { ...BLANK_NEGOTIATION }
+                     : { ...BLANK_STATE }
+    setDoc(doc(db, 'initiative/tab-' + newTab.id), { ...blankState, updatedAt: serverTimestamp() })
     setActiveTabWithHash(newTab.id, newTabs)
     setNewTabName(''); setAddingTab(false)
   }
@@ -879,7 +1366,8 @@ export default function InitiativeTracker({ user, onClose }) {
       color:'#888', fontStyle:'italic', fontFamily:"'Source Serif 4',Georgia,serif" }}>Loading…</div>
   )
 
-  const { round, phase, players, monsterGroups, malice = 0 } = state || BLANK_STATE
+  const { round=1, phase='players', players=[], monsterGroups=[], malice=0 } = state || {}
+  const encounterType = state?.type || 'combat'
   const allPlayersDone = players.filter(p=>!p.dead).every(p=>p.turnTaken)
   const allMonstersDone = !monstersHaveTurns(monsterGroups)
 
@@ -949,7 +1437,7 @@ export default function InitiativeTracker({ user, onClose }) {
       <div style={{ background:'#12121e', borderBottom:'1px solid #2a2a4a',
         padding:'0 0.8rem', height:isMobile?44:50, display:'flex', alignItems:'center', gap:isMobile?'0.4rem':'0.8rem', flexShrink:0 }}>
         {!isMobile && <span style={{ fontFamily:"'IM Fell English',serif", fontSize:'1.1rem', color:'#c8b87a', flexShrink:0 }}>Initiative</span>}
-        {state && <>
+        {state && encounterType === 'combat' && <>
           <div style={{ display:'flex', alignItems:'center', gap:4 }}>
             {admin && <button onClick={()=>update({...state,round:Math.max(1,round-1)})}
               style={{ background:'none',border:'1px solid #3a3a5a',borderRadius:3,color:'#888',cursor:'pointer',fontSize:'0.75rem',padding:'2px 6px' }}>−</button>}
@@ -969,12 +1457,12 @@ export default function InitiativeTracker({ user, onClose }) {
           </div>
         </>}
         <div style={{ flex:1 }}/>
-        {admin && state && !isMobile && <>
+        {admin && state && encounterType === 'combat' && !isMobile && <>
           <button onClick={resetCombat} style={btnStyle()}>↺ Reset</button>
           <button onClick={saveAsTemplate} style={btnStyle('#4a9ac8')} title='Save current state as a template'>💾</button>
           <button onClick={()=>setShowTemplates(true)} style={btnStyle('#7a5a9a')}>📂</button>
         </>}
-        {admin && state && isMobile && <>
+        {admin && state && encounterType === 'combat' && isMobile && <>
           <button onClick={resetCombat} style={{...btnStyle(), padding:'3px 7px', fontSize:'0.7rem'}}>↺</button>
           <button onClick={()=>setShowTemplates(true)} style={{...btnStyle('#7a5a9a'), padding:'3px 7px', fontSize:'0.7rem'}}>📂</button>
         </>}
@@ -1019,11 +1507,13 @@ export default function InitiativeTracker({ user, onClose }) {
           addingTab
             ? <div style={{ display:'flex',alignItems:'center',gap:4,padding:'5px 8px' }}>
                 <input autoFocus value={newTabName} onChange={e=>setNewTabName(e.target.value)}
-                  onKeyDown={e=>{if(e.key==='Enter')addTab();if(e.key==='Escape'){setAddingTab(false);setNewTabName('')}}}
+                  onKeyDown={e=>{if(e.key==='Enter')addTab('combat');if(e.key==='Escape'){setAddingTab(false);setNewTabName('')}}}
                   placeholder='Encounter name…'
                   style={{ width:120,padding:'2px 6px',border:'1px solid #3a3a5a',borderRadius:3,
                     fontSize:'0.82rem',background:'#1a1a2a',color:'#c8c0b0',fontFamily:"'Source Serif 4',Georgia,serif" }}/>
-                <button onClick={addTab} style={{ padding:'2px 7px',border:'none',borderRadius:3,background:PLAYER_COLOR,color:'#fff',cursor:'pointer',fontSize:'0.72rem' }}>+</button>
+                <button onClick={()=>addTab('combat')} title='Combat' style={{ padding:'2px 6px',border:'1px solid #3a3a5a',borderRadius:3,background:'none',color:'#c8c0b0',cursor:'pointer',fontSize:'0.82rem' }}>⚔</button>
+                <button onClick={()=>addTab('montage')} title='Montage' style={{ padding:'2px 6px',border:'1px solid #3a3a5a',borderRadius:3,background:'none',color:'#c8c0b0',cursor:'pointer',fontSize:'0.82rem' }}>🎬</button>
+                <button onClick={()=>addTab('negotiation')} title='Negotiation' style={{ padding:'2px 6px',border:'1px solid #3a3a5a',borderRadius:3,background:'none',color:'#c8c0b0',cursor:'pointer',fontSize:'0.82rem' }}>🤝</button>
                 <button onClick={()=>{setAddingTab(false);setNewTabName('')}} style={{ padding:'2px 6px',border:'1px solid #3a3a5a',borderRadius:3,background:'none',color:'#666',cursor:'pointer',fontSize:'0.72rem' }}>✕</button>
               </div>
             : <button onClick={()=>setAddingTab(true)}
@@ -1035,6 +1525,10 @@ export default function InitiativeTracker({ user, onClose }) {
       {(!loaded || !state) ? (
         <div style={{ flex:1,display:'flex',alignItems:'center',justifyContent:'center',
           color:'#555',fontStyle:'italic' }}>Loading encounter…</div>
+      ) : encounterType === 'montage' ? (
+        <MontageEncounter state={state} update={update} isAdmin={admin} user={user} isMobile={isMobile}/>
+      ) : encounterType === 'negotiation' ? (
+        <NegotiationEncounter state={state} update={update} isAdmin={admin}/>
       ) : (
         <div style={{ flex:isMobile?'none':1,display:isMobile?'flex':'grid',flexDirection:isMobile?'column':undefined,gridTemplateColumns:isMobile?undefined:'1fr 1fr',overflow:isMobile?'visible':'hidden',overflowY:isMobile?'auto':undefined,WebkitOverflowScrolling:'touch' }}>
           {/* Players */}
