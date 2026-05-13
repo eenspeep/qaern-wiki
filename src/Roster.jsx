@@ -10,7 +10,12 @@ const isAdmin = user => user?.displayName === ADMIN
 const uid = () => Math.random().toString(36).slice(2, 10)
 const slugify = t => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
 
-const INFOBOX_FIELDS = ['Name', 'Class', 'Ancestry', 'Faction', 'Age', 'Player Name']
+const INFOBOX_FIELDS = ['Name', 'Class', 'Level', 'Ancestry', 'Faction', 'Age', 'Player Name']
+
+const FACTION_COLORS = {
+  'scarlet pyre':    { glow: 'rgba(190, 35, 35, 0.30)', border: '#c88080' },
+  'amber ceremony':  { glow: 'rgba(195, 140, 0, 0.30)',  border: '#c8a845' },
+}
 
 const FACTION_COLORS = {
   'scarlet pyre':    { glow: 'rgba(190, 35, 35, 0.30)', border: '#c88080' },
@@ -190,7 +195,11 @@ function CharacterCard({ char, onClick }) {
       {/* Name + class */}
       <div style={{ padding: '10px 12px' }}>
         <div style={{ fontFamily: "'IM Fell English',serif", fontSize: '1rem', color: '#222', fontWeight: 600, marginBottom: 3 }}>{char.name || '(Unnamed)'}</div>
-        {char.class && <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#888' }}>{char.class}</div>}
+        {(char.class || char.level) && (
+          <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#888' }}>
+            {char.class}{char.class && char.level ? ' · ' : ''}{char.level ? `Lv. ${char.level}` : ''}
+          </div>
+        )}
         {char.ancestry && <div style={{ fontSize: '0.72rem', color: '#aaa', marginTop: 1 }}>{char.ancestry}</div>}
         <div style={{ fontSize: '0.65rem', color: '#bbb', marginTop: 6, fontStyle: 'italic' }}>{char.player_name || char.playerName}</div>
       </div>
