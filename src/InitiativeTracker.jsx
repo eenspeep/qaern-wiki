@@ -77,10 +77,7 @@ const MOTIVATIONS = [
   'Justice','Legacy','Peace','Power','Protection','Revelry','Vengeance',
 ]
 
-const PITFALLS = [
-  'Bribery','Cowardice','Deception','Disrespect','Failure',
-  'Flattery','Impatience','Inflexibility','Mockery','Sycophancy','Threats','Violence',
-]
+const PITFALLS = MOTIVATIONS
 
 const BLANK_NPC = () => ({
   id: uid(), name: 'NPC', attitude: 'neutral', interest: 2, patience: 3,
