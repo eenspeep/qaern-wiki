@@ -174,15 +174,14 @@ function CharacterCard({ char, onClick }) {
       style={{
         cursor: 'pointer',
         borderRadius: 6,
-        overflow: 'hidden',
         border: `1px solid ${fc ? fc.border : '#ccc9c0'}`,
         background: '#faf9f6',
         boxShadow: shadow,
         transform: hovered ? 'translateY(-3px)' : 'translateY(0)',
         transition: 'box-shadow 0.2s, transform 0.15s',
       }}>
-      {/* Portrait */}
-      <div style={{ width: '100%', aspectRatio: '3/4', background: '#d8d4cc', overflow: 'hidden', position: 'relative' }}>
+      {/* Portrait — overflow:hidden isolated here so it doesn't clip the card's box-shadow */}
+      <div style={{ width: '100%', aspectRatio: '3/4', background: '#d8d4cc', overflow: 'hidden', position: 'relative', borderRadius: '5px 5px 0 0' }}>
         {char.portrait
           ? <img src={char.portrait} alt={char.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}/>
           : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem', color: '#a09888' }}>⚔</div>
