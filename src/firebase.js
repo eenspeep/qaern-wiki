@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 import { getDatabase } from 'firebase/database'
+import { getStorage } from 'firebase/storage'
 
 const firebaseConfig = {
   apiKey:            "AIzaSyDMDkA71sleJdKPw8n3bPRlftVtpaPkhcU",
@@ -15,6 +16,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig)
 
-export const auth = getAuth(app)
-export const db   = getFirestore(app)   // articles, changelog
-export const rtdb = getDatabase(app)    // presence (who's online/editing)
+export const auth    = getAuth(app)
+export const db      = getFirestore(app)   // articles, changelog
+export const rtdb    = getDatabase(app)    // presence (who's online/editing)
+export const storage = getStorage(app)     // character sheet PDFs
