@@ -17,11 +17,6 @@ const FACTION_COLORS = {
   'amber ceremony':  { glow: 'rgba(195, 140, 0, 0.30)',  border: '#c8a845' },
 }
 
-const FACTION_COLORS = {
-  'scarlet pyre':    { glow: 'rgba(190, 35, 35, 0.30)', border: '#c88080' },
-  'amber ceremony':  { glow: 'rgba(195, 140, 0, 0.30)',  border: '#c8a845' },
-}
-
 const checkPassword = (input, hash) => btoa(input) === hash
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
@@ -327,7 +322,7 @@ function CharacterEditForm({ initial, user, onSave, onDelete, onCancel }) {
   const admin = isAdmin(user)
   const isNew = !initial?.id
 
-  const blank = { name: '', class: '', ancestry: '', faction: '', age: '', player_name: user?.displayName || '', portrait: '', summary: '', goal3: '', goal5: '', goal10: '', secret: '', secretPasswordHash: '', characterSheetUrl: '' }
+  const blank = { name: '', class: '', level: '', ancestry: '', faction: '', age: '', player_name: user?.displayName || '', portrait: '', summary: '', goal3: '', goal5: '', goal10: '', secret: '', secretPasswordHash: '', characterSheetUrl: '' }
   const [draft, setDraft] = useState(() => ({ ...blank, ...initial }))
   const [secretPassword, setSecretPassword] = useState('')
   const [uploadProgress, setUploadProgress] = useState(null) // null | 0-100
