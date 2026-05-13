@@ -77,6 +77,11 @@ const MOTIVATIONS = [
   'Justice','Legacy','Peace','Power','Protection','Revelry','Vengeance',
 ]
 
+const PITFALLS = [
+  'Bribery','Cowardice','Deception','Disrespect','Failure',
+  'Flattery','Impatience','Inflexibility','Mockery','Sycophancy','Threats','Violence',
+]
+
 const BLANK_NPC = () => ({
   id: uid(), name: 'NPC', attitude: 'neutral', interest: 2, patience: 3,
   motivations: [], pitfalls: [],
@@ -758,6 +763,7 @@ function MontageEncounter({ state, update, isAdmin, user, isMobile }) {
 
   const outcome = successes >= successLimit ? 'success'
                 : failures  >= failureLimit  ? 'failure'
+                : currentRound >= 3          ? 'partial'
                 : null
 
   const ab = { background:'none', border:'1px solid #3a3a5a', borderRadius:3,
@@ -784,12 +790,12 @@ function MontageEncounter({ state, update, isAdmin, user, isMobile }) {
       {outcome && (
         <div style={{
           padding:'8px 16px', textAlign:'center', flexShrink:0,
-          background: outcome==='success' ? '#0d2e10' : '#2e0d0d',
-          borderBottom:`1px solid ${outcome==='success' ? '#2e7d32' : '#b71c1c'}`,
-          color: outcome==='success' ? '#66bb6a' : '#ef5350',
+          background: outcome==='success' ? '#0d2e10' : outcome==='partial' ? '#2a2510' : '#2e0d0d',
+          borderBottom:`1px solid ${outcome==='success' ? '#2e7d32' : outcome==='partial' ? '#c8a020' : '#b71c1c'}`,
+          color: outcome==='success' ? '#66bb6a' : outcome==='partial' ? '#ffd54f' : '#ef5350',
           fontFamily:"'IM Fell English',serif", fontSize:'1rem', letterSpacing:'0.15em',
         }}>
-          {outcome==='success' ? 'TOTAL SUCCESS' : 'TOTAL FAILURE'}
+          {outcome==='success' ? 'TOTAL SUCCESS' : outcome==='partial' ? 'PARTIAL SUCCESS' : 'TOTAL FAILURE'}
         </div>
       )}
       <div style={{ flex:1, display: isMobile ? 'flex' : 'grid', flexDirection: isMobile ? 'column' : undefined,
@@ -801,9 +807,9 @@ function MontageEncounter({ state, update, isAdmin, user, isMobile }) {
             <span style={{ fontSize:'0.65rem', textTransform:'uppercase', letterSpacing:'0.12em', color:'#888', fontWeight:700 }}>Round</span>
             {isAdmin && <button onClick={()=>update({...state,currentRound:Math.max(1,currentRound-1)})} style={ab}>−</button>}
             <span style={{ color:'#c8b87a', fontFamily:"'IM Fell English',serif", fontSize:'1.1rem', minWidth:20, textAlign:'center' }}>{currentRound}</span>
-            {isAdmin && <button onClick={()=>update({...state,currentRound:Math.min(2,currentRound+1)})} style={ab}>+</button>}
+            {isAdmin && <button onClick={()=>update({...state,currentRound:Math.min(3,currentRound+1)})} style={ab}>+</button>}
             {!outcome && <span style={{ fontSize:'0.72rem', color:'#555', fontStyle:'italic' }}>
-              {currentRound===1 ? 'Round 1 of 2' : 'Round 2 (final)'}
+              {currentRound===1 ? 'Round 1 of 2' : currentRound===2 ? 'Round 2 (final)' : 'Settled'}
             </span>}
           </div>
 
@@ -906,8 +912,15 @@ function MontageEncounter({ state, update, isAdmin, user, isMobile }) {
         )}
         <div style={{ display:'flex', flexWrap:'wrap', gap:10 }}>
           {complications.map(c => (
-            <div key={c.id} style={{ background:'#1e1e32', border:'1px solid #3a3a5a', borderRadius:6,
-              padding:'10px 12px', minWidth:180, maxWidth:300, position:'relative' }}>
+            <div key={c.id} style={{ background:'#1e1e32', border:`1px solid ${c.settled ? '#2a2a3a' : '#3a3a5a'}`, borderRadius:6,
+              padding:'10px 12px', minWidth:180, maxWidth:300, position:'relative',
+              opacity: c.settled ? 0.45 : 1, transition:'opacity 0.2s' }}>
+              <div style={{ position:'absolute', top:6, left:8 }}>
+                <input type='checkbox' checked={c.settled||false}
+                  onChange={e=>updComplication(c.id,{settled:e.target.checked})}
+                  style={{ accentColor:'#c8b87a', width:12, height:12, cursor:'pointer' }}
+                  title='Mark settled'/>
+              </div>
               {isAdmin && (
                 <button onClick={()=>removeComplication(c.id)}
                   style={{ position:'absolute', top:5, right:5, background:'none', border:'none',
@@ -917,8 +930,9 @@ function MontageEncounter({ state, update, isAdmin, user, isMobile }) {
                 readOnly={!isAdmin}
                 style={{ width:'100%', background:'none', border:'none', borderBottom:'1px solid #3a3a5a',
                   color:'#c8b87a', fontSize:'0.82rem', fontFamily:"'IM Fell English',serif",
-                  marginBottom:6, padding:'2px 0', outline:'none',
-                  cursor:isAdmin?'text':'default', boxSizing:'border-box' }}/>
+                  marginBottom:6, padding:'2px 0 2px 20px', outline:'none',
+                  cursor:isAdmin?'text':'default', boxSizing:'border-box',
+                  textDecoration: c.settled ? 'line-through' : 'none' }}/>
               <textarea value={c.text||''} onChange={e=>isAdmin&&updComplication(c.id,{text:e.target.value})}
                 readOnly={!isAdmin} rows={3}
                 style={{ width:'100%', background:'none', border:'none', resize:'vertical',
@@ -978,18 +992,22 @@ function NpcCard({ npc, isAdmin, onUpdate, onRemove }) {
 
   const addMotivation = (label) => {
     if (!label) return
-    upd({ motivations: [...(npc.motivations||[]), { id:uid(), label, used:false }] })
+    upd({ motivations: [...(npc.motivations||[]), { id:uid(), label, used:false, visible:false }] })
     setNewMotivation('')
   }
   const toggleMotivationUsed = id =>
     upd({ motivations: (npc.motivations||[]).map(m => m.id===id ? {...m, used:!m.used} : m) })
+  const toggleMotivationVisible = id =>
+    upd({ motivations: (npc.motivations||[]).map(m => m.id===id ? {...m, visible:!m.visible} : m) })
   const removeMotivation = id =>
     upd({ motivations: (npc.motivations||[]).filter(m => m.id!==id) })
-  const addPitfall = () => {
-    if (!newPitfall.trim()) return
-    upd({ pitfalls: [...(npc.pitfalls||[]), { id:uid(), label:newPitfall.trim() }] })
+  const addPitfall = (label) => {
+    if (!label) return
+    upd({ pitfalls: [...(npc.pitfalls||[]), { id:uid(), label, visible:false }] })
     setNewPitfall('')
   }
+  const togglePitfallVisible = id =>
+    upd({ pitfalls: (npc.pitfalls||[]).map(p => p.id===id ? {...p, visible:!p.visible} : p) })
   const removePitfall = id =>
     upd({ pitfalls: (npc.pitfalls||[]).filter(p => p.id!==id) })
 
@@ -1003,6 +1021,7 @@ function NpcCard({ npc, isAdmin, onUpdate, onRemove }) {
   }
 
   const availableMotivations = MOTIVATIONS.filter(m => !(npc.motivations||[]).some(e => e.label===m))
+  const availablePitfalls = PITFALLS.filter(p => !(npc.pitfalls||[]).some(e => e.label===p))
 
   return (
     <div style={{ background:'#1e1e32', border:'1px solid #3a3a5a', borderRadius:8,
@@ -1079,13 +1098,19 @@ function NpcCard({ npc, isAdmin, onUpdate, onRemove }) {
       <div style={{ marginBottom:12 }}>
         <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#2e7d32', fontWeight:700, marginBottom:6 }}>Motivations</div>
         <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:6 }}>
-          {(npc.motivations||[]).map(m=>(
+          {(npc.motivations||[]).filter(m => isAdmin || m.visible).map(m=>(
             <span key={m.id} style={chip('#0d2e10','#a5d6a7','#81c784', m.used)}>
               {m.label}
               {!m.used && (
                 <button onClick={()=>toggleMotivationUsed(m.id)}
                   style={{ background:'none', border:'none', cursor:'pointer', color:'#81c784', padding:0, fontSize:'0.7rem', lineHeight:1 }}
                   title='Mark used'>✓</button>
+              )}
+              {isAdmin && (
+                <button onClick={()=>toggleMotivationVisible(m.id)}
+                  style={{ background:'none', border:'none', cursor:'pointer', padding:0, fontSize:'0.7rem', lineHeight:1,
+                    color: m.visible ? '#c8b87a' : '#3a3a3a' }}
+                  title={m.visible ? 'Visible to players' : 'Hidden from players'}>👁</button>
               )}
               {isAdmin && <button onClick={()=>removeMotivation(m.id)}
                 style={{ background:'none', border:'none', cursor:'pointer', color:'#555', padding:0, fontSize:'0.65rem', lineHeight:1 }}>✕</button>}
@@ -1117,9 +1142,15 @@ function NpcCard({ npc, isAdmin, onUpdate, onRemove }) {
       <div>
         <div style={{ fontSize:'0.62rem', textTransform:'uppercase', letterSpacing:'0.1em', color:'#e65100', fontWeight:700, marginBottom:6 }}>Pitfalls</div>
         <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:6 }}>
-          {(npc.pitfalls||[]).map(p=>(
+          {(npc.pitfalls||[]).filter(p => isAdmin || p.visible).map(p=>(
             <span key={p.id} style={chip('#2e1a0a','#ffcc80','#ffb74d', false)}>
               {p.label}
+              {isAdmin && (
+                <button onClick={()=>togglePitfallVisible(p.id)}
+                  style={{ background:'none', border:'none', cursor:'pointer', padding:0, fontSize:'0.7rem', lineHeight:1,
+                    color: p.visible ? '#c8b87a' : '#3a3a3a' }}
+                  title={p.visible ? 'Visible to players' : 'Hidden from players'}>👁</button>
+              )}
               {isAdmin && <button onClick={()=>removePitfall(p.id)}
                 style={{ background:'none', border:'none', cursor:'pointer', color:'#888', padding:0, fontSize:'0.65rem', lineHeight:1 }}>✕</button>}
             </span>
@@ -1127,13 +1158,20 @@ function NpcCard({ npc, isAdmin, onUpdate, onRemove }) {
         </div>
         {isAdmin && (
           <div style={{ display:'flex', gap:4 }}>
-            <input value={newPitfall} onChange={e=>setNewPitfall(e.target.value)}
-              onKeyDown={e=>e.key==='Enter'&&addPitfall()}
-              placeholder='Add pitfall…'
-              style={{ flex:1, padding:'3px 6px', border:'1px solid #4a2a1a', borderRadius:3,
-                background:'#2e1a0a', color:'#c8c0b0', fontSize:'0.72rem',
-                fontFamily:"'Source Serif 4',Georgia,serif", minWidth:0 }}/>
-            <button onClick={addPitfall}
+            <select value={newPitfall} onChange={e=>setNewPitfall(e.target.value)}
+              style={{ flex:1, fontSize:'0.72rem', border:'1px solid #4a2a1a', borderRadius:3,
+                background:'#2e1a0a', color:'#c8c0b0', padding:'2px 4px', minWidth:0 }}>
+              <option value=''>Add pitfall…</option>
+              {availablePitfalls.map(p=><option key={p} value={p}>{p}</option>)}
+              <option value='__custom__'>Custom…</option>
+            </select>
+            <button onClick={()=>{
+              if (newPitfall==='__custom__') {
+                const v=prompt('Pitfall:')
+                if(v) addPitfall(v)
+                setNewPitfall('')
+              } else addPitfall(newPitfall)
+            }}
               style={{ padding:'2px 8px', border:'none', borderRadius:3, background:'#e65100', color:'#fff', cursor:'pointer', fontSize:'0.72rem' }}>+</button>
           </div>
         )}
