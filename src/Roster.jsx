@@ -486,6 +486,34 @@ function CharacterEditForm({ initial, user, onSave, onDelete, onCancel }) {
 }
 
 // ─── Main Roster page ─────────────────────────────────────────────────────────
+const SORT_OPTIONS = [
+  { key: 'level',    label: 'Level' },
+  { key: 'name',     label: 'Name' },
+  { key: 'class',    label: 'Class' },
+  { key: 'ancestry', label: 'Ancestry' },
+  { key: 'faction',  label: 'Faction' },
+  { key: 'player',   label: 'Player' },
+]
+
+function sortChars(chars, sortBy) {
+  const str = c => (c[sortBy] || c.player_name || '').toLowerCase()
+  const name = c => (c.name || '').toLowerCase()
+  return [...chars].sort((a, b) => {
+    if (sortBy === 'level') {
+      const la = parseInt(a.level) || 0
+      const lb = parseInt(b.level) || 0
+      if (lb !== la) return lb - la
+      return name(a).localeCompare(name(b))
+    }
+    if (sortBy === 'player') {
+      const pa = (a.player_name || a.playerName || '').toLowerCase()
+      const pb = (b.player_name || b.playerName || '').toLowerCase()
+      return pa.localeCompare(pb) || name(a).localeCompare(name(b))
+    }
+    return str(a).localeCompare(str(b)) || name(a).localeCompare(name(b))
+  })
+}
+
 export default function Roster({ user, onClose }) {
   const [chars, setChars] = useState([])
   const [loaded, setLoaded] = useState(false)
@@ -493,6 +521,7 @@ export default function Roster({ user, onClose }) {
   const [editing, setEditing] = useState(null)
   const [creating, setCreating] = useState(false)
   const [unlockedIds, setUnlockedIds] = useState(new Set())
+  const [sortBy, setSortBy] = useState('level')
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'characters'), snap => {
@@ -538,6 +567,21 @@ export default function Roster({ user, onClose }) {
         </button>
       </div>
 
+      {/* Sort bar */}
+      <div style={{ borderBottom: '1px solid #e8e5e0', padding: '0 1.5rem', height: 38, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, background: '#f8f7f4' }}>
+        <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: '#aaa', marginRight: 4 }}>Sort</span>
+        {SORT_OPTIONS.map(opt => (
+          <button key={opt.key} onClick={() => setSortBy(opt.key)}
+            style={{ padding: '3px 10px', borderRadius: 12, border: `1px solid ${sortBy === opt.key ? '#1b4f72' : '#ccc9c0'}`,
+              background: sortBy === opt.key ? '#1b4f72' : 'none',
+              color: sortBy === opt.key ? '#fff' : '#666',
+              cursor: 'pointer', fontSize: '0.74rem', fontFamily: "'Source Serif 4',Georgia,serif",
+              transition: 'background 0.15s, color 0.15s' }}>
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
         {!loaded && <div style={{ color: '#aaa', fontStyle: 'italic' }}>Loading…</div>}
@@ -548,7 +592,7 @@ export default function Roster({ user, onClose }) {
         )}
         {loaded && chars.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.2rem', maxWidth: 1100 }}>
-            {chars.map(char => (
+            {sortChars(chars, sortBy).map(char => (
               <CharacterCard key={char.id} char={char} onClick={() => setViewing(char)}/>
             ))}
           </div>
